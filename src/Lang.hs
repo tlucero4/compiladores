@@ -37,8 +37,30 @@ data UnaryOp = Succ | Pred
 -- | tipo de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
 data Decl a =
     Decl { declPos :: Pos, declName :: Name, declBody :: a }
+  | Eval a
   deriving (Show,Functor)
-
+  
+data SDecl a =
+    SDecl { sDeclPos :: Pos, sDeclName :: Name, sDeclType :: Ty, sDeclVars :: [(Name, Ty)], sDeclRec :: Bool, sDeclBody :: a }
+  | SEval a
+  deriving (Show,Functor)
+  
+-- | AST superficial de los terminos. Es el que usamos para parsear la azucar sintáctica.
+data STm info var =
+    SV info var
+  | SConst info Const
+  | SLam info [(Name, Ty)] (STm info var) 
+  | SApp info (STm info var) (STm info var)
+  | SUnaryOp info UnaryOp (STm info var)
+  | SFix info Name Ty Name Ty (STm info var)
+--  | SFix info [(Name, Ty)] (STm info var) -- realmente existe una version de Fix con multiples variables? En el apunte SS solo aparecen de una
+  | SIfZ info (STm info var) (STm info var) (STm info var)
+  | SLet info Name Ty (STm info var) (STm info var)
+  | SLetFun info Name Ty [(Name, Ty)] (STm info var) (STm info var)
+  | SLetFunRec info Name Ty [(Name, Ty)] (STm info var) (STm info var)
+  | SType info Name Ty
+  deriving (Show, Functor)
+  
 -- | AST de los términos. 
 --   - info es información extra que puede llevar cada nodo. 
 --       Por ahora solo la usamos para guardar posiciones en el código fuente.
@@ -53,6 +75,7 @@ data Tm info var =
   | IfZ info (Tm info var) (Tm info var) (Tm info var)
   deriving (Show, Functor)
 
+type STerm = STm Pos Name
 type NTerm = Tm Pos Name   -- ^ 'Tm' tiene 'Name's como variables ligadas y libres, guarda posición
 type Term = Tm Pos Var     -- ^ 'Tm' con índices de De Bruijn como variables ligadas, different type of variables, guarda posición
 

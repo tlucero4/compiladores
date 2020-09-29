@@ -28,7 +28,8 @@ lexer :: Tok.TokenParser u
 lexer = Tok.makeTokenParser $
         emptyDef {
          commentLine    = "#",
-         reservedNames = ["let", "fun", "fix", "then", "else", 
+         reservedNames = ["let", "fun", "fix", "then", "else",
+                          "rec", "type", "in",
                           "succ", "pred", "ifz", "Nat"],
          reservedOpNames = ["->",":","="]
         }
@@ -174,3 +175,170 @@ parse :: String -> NTerm
 parse s = case runP tm s "" of
             Right t -> t
             Left e -> error ("no parse: " ++ show s)
+            
+
+-- Sección para parsear azucar sintactica:
+
+sconst :: P Const
+sconst = CNat <$> num
+
+sunaryOp :: P STerm
+sunaryOp = do
+  i <- getPos
+  foldr (\(w, r) rest -> try (do 
+                                 reserved w
+                                 a <- satom
+                                 return (r a)) <|> rest) parserZero (mapping i)
+  where
+   mapping i = [
+       ("succ", SUnaryOp i Succ)
+     , ("pred", SUnaryOp i Pred)
+    ]
+
+satom :: P STerm
+satom =     (flip SConst <$> const <*> getPos)
+       <|> flip SV <$> var <*> getPos
+       <|> parens stm
+
+--para parsear una lista de binders
+binders :: P [(Name, Ty)]
+binders = many (parens $ do 
+                    v <- var
+                    reservedOp ":"
+                    ty <- typeP 
+                    return (v,ty))
+         
+slam :: P STerm
+slam = do i <- getPos
+          reserved "fun"
+          vts <- binders
+          reservedOp "->"
+          t <- stm
+          return (SLam i vts t)
+
+sapp :: P STerm
+sapp = (do i <- getPos
+           f <- satom
+           args <- many satom
+           return (foldl (SApp i) f args))
+
+sifz :: P STerm
+sifz = do i <- getPos
+          reserved "ifz"
+          c <- stm
+          reserved "then"
+          t <- stm
+          reserved "else"
+          e <- stm
+          return (SIfZ i c t e)
+{-
+sfix :: P STerm
+sfix = do i <- getPos
+          reserved "fix"
+          nts <- binders
+          reservedOp "->"
+          t <- stm
+          return (SFix i nts t)
+          -}
+sfix :: P STerm
+sfix = do i <- getPos
+          reserved "fix"
+          (f, fty) <- parens binding
+          (x, xty) <- parens binding
+          reservedOp "->"
+          t <- stm
+          return (SFix i f fty x xty t)   
+         
+slet :: P STerm
+slet = do 
+     i <- getPos
+     reserved "let"
+     v <- var
+     reservedOp ":"
+     ty <- typeP
+     reservedOp "="
+     std <- stm
+     reserved "in"
+     sta <- stm
+     return (SLet i v ty std sta)
+     
+sletFun :: P STerm
+sletFun = do 
+        i <- getPos
+        reserved "let"
+        n <- var
+        vts <- binders
+        reservedOp ":"
+        ty <- typeP
+        reservedOp "="
+        std <- stm
+        reserved "in"
+        sta <- stm
+        return (SLetFun i n ty vts std sta)
+
+sletFunRec :: P STerm
+sletFunRec = do 
+            i <- getPos
+            reserved "let"
+            reserved "rec"
+            n <- var
+            vts <- binders
+            reservedOp ":"
+            ty <- typeP
+            reservedOp "="
+            std <- stm
+            reserved "in"
+            sta <- stm
+            return (SLetFunRec i n ty vts std sta)
+
+-- | Parser de términos azucarados
+stm :: P STerm
+stm = sunaryOp <|> satom <|> slam <|> sapp <|> sifz <|> sfix <|> sletFunRec <|> sletFun <|> slet
+
+-- | Parser de declaraciones azucaradas
+sdeclt :: P (SDecl STerm)
+sdeclt = do 
+     i <- getPos
+     reserved "let"
+     v <- var
+     reservedOp ":"
+     ty <- typeP
+     reservedOp "="
+     t <- stm
+     return (SDecl i v ty [] False t)
+     
+-- | Parser de declaraciones de funciones azucaradas
+sdeclf :: P (SDecl STerm)
+sdeclf = do i <- getPos
+            reserved "let"
+            f <- var
+            nts <- binders
+            reservedOp ":"
+            fty <- typeP
+            reservedOp "="
+            t <- stm
+            return (SDecl i f fty nts False t)
+     
+sdeclfr :: P (SDecl STerm)
+sdeclfr = do i <- getPos
+             reserved "let"
+             reserved "rec"
+             f <- var
+             nts <- binders
+             reservedOp ":"
+             fty <- typeP
+             reservedOp "="
+             t <- stm
+             return (SDecl i f fty nts True t)
+
+sdecl :: P (SDecl STerm)
+sdecl = sdeclfr <|> sdeclf <|> sdeclt
+
+-- | Parser de programas con azucar sintactico (listas de declaraciones) 
+sprogram :: P [SDecl STerm]
+sprogram = many sdecl
+
+-- | Parsea una declaración a un término
+-- Útil para las sesiones interactivas
+sdeclOrTm :: P (Either (SDecl STerm) STerm)
+sdeclOrTm =  try (Left <$> sdecl) <|> (Right <$> stm)
