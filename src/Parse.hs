@@ -8,7 +8,7 @@ Stability   : experimental
 
 -}
 
-module Parse (tm, Parse.parse, decl, runP, P, program, declOrTm) where
+module Parse (stm, tm, Parse.parse, decl, sdecl, runP, P, sprogram, program, sdeclOrSTm, declOrTm) where
 
 import Prelude hiding ( const )
 import Lang
@@ -202,7 +202,7 @@ satom =     (flip SConst <$> const <*> getPos)
 
 --para parsear una lista de binders
 binders :: P [(Name, Ty)]
-binders = many (parens $ do 
+binders = many1 (parens $ do 
                     v <- var
                     reservedOp ":"
                     ty <- typeP 
@@ -292,8 +292,8 @@ sletFunRec = do
             return (SLetFunRec i n ty vts std sta)
 
 -- | Parser de términos azucarados
-stm :: P STerm
-stm = sunaryOp <|> satom <|> slam <|> sapp <|> sifz <|> sfix <|> sletFunRec <|> sletFun <|> slet
+stm :: P STerm -- falta agregar sletFunRec
+stm = sunaryOp <|> satom <|> slam <|> sapp <|> sifz <|> sfix <|> (try sletFun <|> slet)
 
 -- | Parser de declaraciones azucaradas
 sdeclt :: P (SDecl STerm)
@@ -332,7 +332,7 @@ sdeclfr = do i <- getPos
              return (SDecl i f fty nts True t)
 
 sdecl :: P (SDecl STerm)
-sdecl = sdeclfr <|> sdeclf <|> sdeclt
+sdecl = try sdeclfr <|> sdeclf <|> sdeclt
 
 -- | Parser de programas con azucar sintactico (listas de declaraciones) 
 sprogram :: P [SDecl STerm]
@@ -340,5 +340,10 @@ sprogram = many sdecl
 
 -- | Parsea una declaración a un término
 -- Útil para las sesiones interactivas
-sdeclOrTm :: P (Either (SDecl STerm) STerm)
-sdeclOrTm =  try (Left <$> sdecl) <|> (Right <$> stm)
+sdeclOrSTm :: P (Either (SDecl STerm) STerm)
+sdeclOrSTm =  try (Left <$> sdecl) <|> (Right <$> stm)
+
+sparse :: String -> STerm
+sparse s = case runP stm s "" of
+            Right t -> t
+            Left e -> error ("no parse: " ++ show s)

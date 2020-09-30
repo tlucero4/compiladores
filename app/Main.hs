@@ -26,8 +26,9 @@ import System.IO ( stderr, hPutStr )
 import Global ( GlEnv(..) )
 import Errors
 import Lang
-import Parse ( P, tm, program, declOrTm, runP )
-import Elab ( elab )
+--import Parse ( P, tm, program, declOrTm, runP )
+import Parse ( P, stm, sprogram, sdeclOrSTm, runP )
+import Elab ( elab, elab_sdecl )
 import Eval ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
@@ -74,20 +75,28 @@ compileFile f = do
                (\e -> do let err = show (e :: IOException)
                          hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
                          return "")
-    decls <- parseIO filename program x
-    mapM_ handleDecl decls
+    decls <- parseIO filename sprogram x
+    mapM_ handleSDecl decls
 
 parseIO ::  MonadPCF m => String -> P a -> String -> m a
 parseIO filename p x = case runP p x filename of
                   Left e  -> throwError (ParseErr e)
                   Right r -> return r
-
+{-
 handleDecl ::  MonadPCF m => Decl NTerm -> m ()
 handleDecl (Decl p x t) = do
         let tt = elab t
         tcDecl (Decl p x tt)    
         te <- eval tt
         addDecl (Decl p x te)
+        -}
+handleSDecl ::  MonadPCF m => SDecl STerm -> m ()
+handleSDecl sd = do
+            -- aca habria que transformar SDecl STerm -> Decl Term
+            let (TDecl p x xty t) = elab_sdecl sd
+            tcDecl (TDecl p x xty t)
+            te <- eval t
+            addDecl (Decl p x te)
 
 data Command = Compile CompileForm
              | Print String
@@ -164,13 +173,21 @@ handleCommand cmd = do
 compilePhrase ::  MonadPCF m => String -> m ()
 compilePhrase x =
   do
-    dot <- parseIO "<interactive>" declOrTm x
+    dot <- parseIO "<interactive>" sdeclOrSTm x
     case dot of 
-      Left d  -> handleDecl d
-      Right t -> handleTerm t
-
+      Left d  -> handleSDecl d
+      Right t -> handleSTerm t
+{-
 handleTerm ::  MonadPCF m => NTerm -> m ()
 handleTerm t = do
+         let tt = elab t
+         s <- get
+         ty <- tc tt (tyEnv s)
+         te <- eval tt
+         printPCF (pp te ++ " : " ++ ppTy ty)
+         -}
+handleSTerm ::  MonadPCF m => STerm -> m ()
+handleSTerm t = do
          let tt = elab t
          s <- get
          ty <- tc tt (tyEnv s)
@@ -180,19 +197,19 @@ handleTerm t = do
 printPhrase   :: MonadPCF m => String -> m ()
 printPhrase x =
   do
-    x' <- parseIO "<interactive>" tm x
+    x' <- parseIO "<interactive>" stm x
     let ex = elab x'
     t  <- case x' of 
-           (V p f) -> maybe ex id <$> lookupDecl f
-           _       -> return ex  
-    printPCF "NTerm:"
+           (SV p f) -> maybe ex id <$> lookupDecl f
+           _        -> return ex  
+    printPCF "STerm:"
     printPCF (show x')
     printPCF "\nTerm:"
     printPCF (show t)
 
 typeCheckPhrase :: MonadPCF m => String -> m ()
 typeCheckPhrase x = do
-         t <- parseIO "<interactive>" tm x
+         t <- parseIO "<interactive>" stm x
          let tt = elab t
          s <- get
          ty <- tc tt (tyEnv s)

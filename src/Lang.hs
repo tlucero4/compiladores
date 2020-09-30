@@ -34,10 +34,15 @@ data Const = CNat Int
 data UnaryOp = Succ | Pred
   deriving Show
 
--- | tipo de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
+-- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
 data Decl a =
     Decl { declPos :: Pos, declName :: Name, declBody :: a }
   | Eval a
+  deriving (Show,Functor)
+
+data TDecl a =
+    TDecl { tdeclPos :: Pos, tdeclName :: Name, tdeclType :: Ty, tdeclBody :: a }
+  | TEval a
   deriving (Show,Functor)
   
 data SDecl a =
