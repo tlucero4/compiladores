@@ -58,12 +58,9 @@ data STm info var =
   | SApp info (STm info var) (STm info var)
   | SUnaryOp info UnaryOp (STm info var)
   | SFix info Name Ty Name Ty (STm info var)
---  | SFix info [(Name, Ty)] (STm info var) -- realmente existe una version de Fix con multiples variables? En el apunte SS solo aparecen de una
+--  | SFix info [(Name, Ty)] (STm info var) -- realmente existe una version de Fix con multiples variables?
   | SIfZ info (STm info var) (STm info var) (STm info var)
-  | SLet info Name Ty (STm info var) (STm info var)
-  | SLetFun info Name Ty [(Name, Ty)] (STm info var) (STm info var)
-  | SLetFunRec info Name Ty [(Name, Ty)] (STm info var) (STm info var)
-  | SType info Name Ty
+  | SLet info Name Ty [(Name, Ty)] Bool (STm info var) (STm info var)
   deriving (Show, Functor)
   
 -- | AST de los términos. 

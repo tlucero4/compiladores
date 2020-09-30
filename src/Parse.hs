@@ -202,7 +202,7 @@ satom =     (flip SConst <$> const <*> getPos)
 
 --para parsear una lista de binders
 binders :: P [(Name, Ty)]
-binders = many1 (parens $ do 
+binders = many (parens $ do 
                     v <- var
                     reservedOp ":"
                     ty <- typeP 
@@ -253,47 +253,21 @@ slet :: P STerm
 slet = do 
      i <- getPos
      reserved "let"
-     v <- var
+-- la idea es que si puede consumir la palabra 'rec' devuelva true, y si "falla" devuelva false:
+     r <- reserved "rec"
+     n <- var
+     vts <- binders
      reservedOp ":"
      ty <- typeP
      reservedOp "="
      std <- stm
      reserved "in"
      sta <- stm
-     return (SLet i v ty std sta)
-     
-sletFun :: P STerm
-sletFun = do 
-        i <- getPos
-        reserved "let"
-        n <- var
-        vts <- binders
-        reservedOp ":"
-        ty <- typeP
-        reservedOp "="
-        std <- stm
-        reserved "in"
-        sta <- stm
-        return (SLetFun i n ty vts std sta)
-
-sletFunRec :: P STerm
-sletFunRec = do 
-            i <- getPos
-            reserved "let"
-            reserved "rec"
-            n <- var
-            vts <- binders
-            reservedOp ":"
-            ty <- typeP
-            reservedOp "="
-            std <- stm
-            reserved "in"
-            sta <- stm
-            return (SLetFunRec i n ty vts std sta)
+     return (SLet i n ty vts r std sta)
 
 -- | Parser de términos azucarados
-stm :: P STerm -- falta agregar sletFunRec
-stm = sunaryOp <|> satom <|> slam <|> sapp <|> sifz <|> sfix <|> (try sletFun <|> slet)
+stm :: P STerm
+stm = slet <|> sapp <|> slam <|>  sifz <|> sunaryOp <|> sfix
 
 -- | Parser de declaraciones azucaradas
 sdeclt :: P (SDecl STerm)
@@ -332,7 +306,7 @@ sdeclfr = do i <- getPos
              return (SDecl i f fty nts True t)
 
 sdecl :: P (SDecl STerm)
-sdecl = try sdeclfr <|> sdeclf <|> sdeclt
+sdecl = try sdeclfr <|> try sdeclf <|> sdeclt
 
 -- | Parser de programas con azucar sintactico (listas de declaraciones) 
 sprogram :: P [SDecl STerm]
@@ -341,7 +315,7 @@ sprogram = many sdecl
 -- | Parsea una declaración a un término
 -- Útil para las sesiones interactivas
 sdeclOrSTm :: P (Either (SDecl STerm) STerm)
-sdeclOrSTm =  try (Left <$> sdecl) <|> (Right <$> stm)
+sdeclOrSTm =  try (Right <$> stm) <|> (Left <$> sdecl)
 
 sparse :: String -> STerm
 sparse s = case runP stm s "" of

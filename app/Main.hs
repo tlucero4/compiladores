@@ -177,15 +177,8 @@ compilePhrase x =
     case dot of 
       Left d  -> handleSDecl d
       Right t -> handleSTerm t
-{-
-handleTerm ::  MonadPCF m => NTerm -> m ()
-handleTerm t = do
-         let tt = elab t
-         s <- get
-         ty <- tc tt (tyEnv s)
-         te <- eval tt
-         printPCF (pp te ++ " : " ++ ppTy ty)
-         -}
+      
+--handleTerm ::  MonadPCF m => NTerm -> m ()
 handleSTerm ::  MonadPCF m => STerm -> m ()
 handleSTerm t = do
          let tt = elab t
