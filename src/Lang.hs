@@ -24,7 +24,8 @@ import Common ( Pos )
 data Ty = 
       NatTy 
     | FunTy Ty Ty
-    | NamedTy Name Ty
+    | NamedTy Pos Name Ty
+    | UntrackedTy Pos Name
     deriving (Show,Eq)
 
 type Name = String

@@ -69,12 +69,9 @@ getPos = do pos <- getPosition
 tyatom :: P Ty
 tyatom = (reserved "Nat" >> return NatTy)
          <|> parens typeP
-         {-
-         <|> f <- getChars
-             case lookUp namedTypes f
-                  Nothing -> error
-                  Just x  -> x
-                  -}
+         <|> (do
+                st <- identifier
+                return (UntrackedTy st))
 
 typeP :: P Ty
 typeP = try (do 
@@ -83,8 +80,6 @@ typeP = try (do
           y <- typeP
           return (FunTy x y))
       <|> tyatom
-          
--- namedTypes : {"Bool" : NamedTy "Bool" Nat, "typeB" : (FunTy NatTy NatTy), ... }
           
 const :: P Const
 const = CNat <$> num
@@ -282,8 +277,8 @@ stm :: P STerm
 stm = slet <|> sapp <|> slam <|>  sifz <|> sunaryOp <|> sfix
 
 -- | Parser de declaraciones azucaradas
-sdecl :: P (SDecl STerm)
-sdecl = do  i <- getPos
+sdecll :: P (SDecl STerm)
+sdecll = do  i <- getPos
             reserved "let"
             (do
                 reserved "rec"
@@ -296,13 +291,24 @@ sdecl = do  i <- getPos
             t <- stm
             return (SDecl i f fty nts r t)
 
+sdeclt :: P Ty
+sdeclt = do i <- getPos
+           reserved "type"
+           st <- identifier
+           reservedOp "="
+           rt <- typeP
+           return (NamedTy i st rt)
+
+sdecl :: P (Either (SDecl STerm) Ty)
+sdecl = (Left <$> sdecll) <|> (Right <$> sdeclt) 
+        
 -- | Parser de programas con azucar sintactico (listas de declaraciones) 
 sprogram :: P [SDecl STerm]
 sprogram = many sdecl
 
 -- | Parsea una declaración a un término
 -- Útil para las sesiones interactivas
-sdeclOrSTm :: P (Either (SDecl STerm) STerm)
+sdeclOrSTm :: P (Either ((Either (SDecl STerm) Ty) STerm))
 sdeclOrSTm =  try (Right <$> stm) <|> (Left <$> sdecl)
 
 sparse :: String -> STerm

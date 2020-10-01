@@ -30,6 +30,7 @@ initialEnv = GlEnv True "" [] [] []
 -- este parser será una posibilidad mas en sdeclOrSTm
 -- que sera llevado a otro caso para compilePhrase en Main
 -- y resultara en una funcion handleSNAmedTy que lo agregara al nuevo entorno
--- en tyatom (Parse) debemos crear una manera de reconocer estos nuevos tipos y devolver su NamedTy correspondiente
+-- en tyatom (Parse) debemos crear una manera de reconocer estos nuevos tipos y devolver un UntrackedTy Name
+-- hacemos un desugar de tipos donde se transforma un UntrackedTy por su NamedTy correspondiente si aparece en el entorno, o falla sino
 -- en el TypeChecker, debemos considerar que cuando aparece algo con termino NamedTy, solo debemos quedarnos con su Ty interno
 -- que hacer con respecto a la impresion? por ejemplo para errores

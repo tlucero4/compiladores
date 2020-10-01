@@ -64,6 +64,9 @@ addDecl d = modify (\s -> s { glb = d : glb s })
 addTy :: MonadPCF m => Name -> Ty -> m ()
 addTy n ty = modify (\s -> s { tyEnv = (n,ty) : tyEnv s })
 
+addSTy :: MonadPCF m => Name -> Ty -> m ()
+addSTy n ty = modify (\s -> s { namedTy = (n,ty) : namedTy s })
+
 hasName :: Name -> Decl a -> Bool
 hasName nm (Decl { declName = nm' }) = nm == nm'
 
@@ -79,6 +82,11 @@ lookupTy nm = do
       s <- get
       return $ lookup nm (tyEnv s)
 
+lookupSTy :: MonadPCF m => Name -> m (Maybe Ty)
+lookupSTy nm = do
+      s <- get
+      return $ lookup nm (namedTy s)
+      
 failPosPCF :: MonadPCF m => Pos -> String -> m a
 failPosPCF p s = throwError (ErrPos p s)
 

@@ -90,14 +90,27 @@ handleDecl (Decl p x t) = do
         te <- eval tt
         addDecl (Decl p x te)
         -}
-handleSDecl ::  MonadPCF m => SDecl STerm -> m ()
-handleSDecl sd = do
-            -- aca habria que transformar SDecl STerm -> Decl Term
+        
+        
+handleSDecl ::  MonadPCF m => Either (SDecl STerm) STy -> m ()
+handleSDecl d =
+    case d of
+         Left l  -> handleSDeclL l
+         Right t -> handleSDeclT t
+
+handleSDeclL ::  MonadPCF m => SDecl STerm -> m ()
+handleSDeclL sd = do
             let (TDecl p x xty t) = elab_sdecl sd
             tcDecl (TDecl p x xty t)
             te <- eval t
             addDecl (Decl p x te)
 
+handleSDeclT :: MonadPCF m => Ty -> m ()
+handleSDeclT (NamedTy p st rt) =
+    case lookupSTy st of
+             Just _  -> failPosPCF p "El tipo "++st++" ya existe."
+             Nothing -> addSTy st rt
+             
 data Command = Compile CompileForm
              | Print String
              | Type String

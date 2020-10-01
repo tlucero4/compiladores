@@ -14,6 +14,7 @@ module Elab ( elab, elab_sdecl ) where
 
 import Lang
 import Subst
+import MonadPCF
 
 -- | 'elab' transforma variables ligadas en índices de de Bruijn
 -- en un término dado. 
@@ -45,6 +46,15 @@ sLet :: STerm -> STerm
 sLet (SLet p f fty [n]    True d a) = SLet p f (FunTy (snd n) ty) False (SFix p f (FunTy (snd n) ty) (fst n) (snd n) d) a
 sLet (SLet p f fty (n:ns) True d a) = sLet (SLet p f (buildFunType ns fty) [n] True (SLam p ns d) a)
 
+desugarTy :: MonadPCF m => Ty -> m Ty
+desugarTy (NatTy)           = NatTy
+desugarTy (FunTy t y)       = FunTy (desugarTy t) (desugarTy t)
+desugarTy (NamedTy p n t)   = NamedTy p n (desugarTy t)
+desugarTy (UntrackedTy p n) =
+    case lookupSTy n of
+         Nothing -> failPosPCF p "El tipo "++n++" no existe."
+         Just t  -> NamedTy p n (desugarTy t)
+
 desugar :: MonadPCF m => STerm -> m NTerm
 desugar (SV p v)               = V p v
 desugar (SConst p c)           = Const p c
@@ -52,14 +62,14 @@ desugar (SLam p [] t)          = failPosPCF p "La función debe tener un argumen
 desugar (SLam p l t)           = sLam p l t
 desugar (SApp p h a)           = App p (desugar h) (desugar a)
 -- Fix deberia tener una lista de variables con sus tipos? En la teoria no se usa nunca
-desugar (SFix p f fty n nty t) = Fix p f fty n nty (desugar t)
+desugar (SFix p f fty n nty t) = Fix p f (desugarTy fty) n (desugarTy nty) (desugar t)
 --desugar (SFix p [] t)          = error
 --desugar (SFix p n:ns t)        = desugarFix p n:ns t
 desugar (SIfZ p c t e)         = IfZ p (desugar c) (desugar t) (desugar e)
 desugar (SUnaryOp p o t)       = UnaryOp p o (desugar t)
 desugar (SUnaryOp' p o)        = Lam p (V p "x") NatTy (UnaryOp p o (V p "x"))
 desugar (SLet p _ _   []     _ _ _) = failPosPCF p "La función recursiva debe tener un argumento"
-desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) (SLam p ns d) a)
+desugar (SLet p f fty ns False d a) = desugar (SLet p f (desugarTy.buildFunType ns fty) (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar.sLet (SLet p f fty ns True d a)
 
 {-
@@ -75,8 +85,7 @@ elab :: STerm -> Term
 elab = elab'.desugar
 
 elab_sdecl :: SDecl STerm -> TDecl Term
-elab_sdecl (SDecl p n nty [] r st) = TDecl p n nty (elab st)
-elab_sdecl (SDecl p n nty (v:vs) r st)
-    | r == True && null vs  = TDecl p n (FunTy (snd v) nty) (elab' (sLam p vs st))
-    | r == True             = elab_sdecl (SDecl p n (buildFunType vs nty) [v] r (SLam p vs st))
-    | otherwise             = TDecl p n (buildFunType (v:vs) nty) (elab (SLam p vs st))
+elab_sdecl (SDecl p n nty [] _ st)        = TDecl p n (desugarTy nty) (elab st)
+elab_sdecl (SDecl p n nty [v] True st)    = TDecl p n (desugarTy (FunTy (snd v) nty)) (elab' (sLam p vs st))
+elab_sdecl (SDecl p n nty (v:vs) True st) = elab_sdecl (SDecl p n (desugarTy.buildFunType vs nty) [v] True (SLam p vs st))
+elab_sdecl (SDecl p n nty (v:vs) _ st)    = TDecl p n (desugarTy.buildFunType (v:vs) nty) (elab (SLam p vs st))
