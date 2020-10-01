@@ -41,9 +41,9 @@ sLam :: Pos -> [(Name,Ty)] -> STerm
 sLam p [] t     = desugar t
 sLam p (n:ns) t = Lam p (fst n) (snd n) (sLam p ns t)
 
-sLet :: Pos -> Name -> Ty -> [(Name,Ty)] -> STerm -> STerm -> NTerm
-sLet p f ty []     d a  = ?
-sLet p f ty (n:ns) d a  = ?
+sLet :: STerm -> STerm
+sLet (SLet p f fty [n]    True d a) = SLet p f (FunTy (snd n) ty) False (SFix p f (FunTy (snd n) ty) (fst n) (snd n) d) a
+sLet (SLet p f fty (n:ns) True d a) = sLet (SLet p f (buildFunType ns fty) [n] True (SLam p ns d) a)
 
 desugar :: MonadPCF m => STerm -> m NTerm
 desugar (SV p v)               = V p v
@@ -57,10 +57,11 @@ desugar (SFix p f fty n nty t) = Fix p f fty n nty (desugar t)
 --desugar (SFix p n:ns t)        = desugarFix p n:ns t
 desugar (SIfZ p c t e)         = IfZ p (desugar c) (desugar t) (desugar e)
 desugar (SUnaryOp p o t)       = UnaryOp p o (desugar t)
+desugar (SUnaryOp' p o)        = Lam p (V p "x") NatTy (UnaryOp p o (V p "x"))
+desugar (SLet p _ _   []     _ _ _) = failPosPCF p "La función recursiva debe tener un argumento"
+desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) (SLam p ns d) a)
+desugar (SLet p f fty ns True d a)  = desugar.sLet (SLet p f fty ns True d a)
 
-desugar (SLet p f fty []     _ d a) = failPosPCF p "La función recursiva debe tener un argumento"
-desugar (SLet p f fty _  False d a) = desugar (SLet p f (buildFunType ns fty) (SLam p ns d) a)
-desugar (SLet p f fty (n:ns) _ d a) = --desugar (SLet p f (buildFunType ns fty) [n] () a)
 {-
 desugar (SLet p x xty d a)             = App p (Lam p x xty (desugar a)) (desugar d)
 desugar (SLetFun p f fty nts d a)      = 

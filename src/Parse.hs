@@ -69,6 +69,12 @@ getPos = do pos <- getPosition
 tyatom :: P Ty
 tyatom = (reserved "Nat" >> return NatTy)
          <|> parens typeP
+         {-
+         <|> f <- getChars
+             case lookUp namedTypes f
+                  Nothing -> error
+                  Just x  -> x
+                  -}
 
 typeP :: P Ty
 typeP = try (do 
@@ -77,6 +83,8 @@ typeP = try (do
           y <- typeP
           return (FunTy x y))
       <|> tyatom
+          
+-- namedTypes : {"Bool" : NamedTy "Bool" Nat, "typeB" : (FunTy NatTy NatTy), ... }
           
 const :: P Const
 const = CNat <$> num
@@ -182,6 +190,8 @@ parse s = case runP tm s "" of
 sconst :: P Const
 sconst = CNat <$> num
 
+-- falta considerar la operacion sin aplicar y generar en ese caso un SUnaryOp'
+-- si "a <- satom" falla, devolvemos la otra estructura
 sunaryOp :: P STerm
 sunaryOp = do
   i <- getPos
@@ -248,13 +258,15 @@ sfix = do i <- getPos
           reservedOp "->"
           t <- stm
           return (SFix i f fty x xty t)   
-         
+
 slet :: P STerm
 slet = do 
      i <- getPos
      reserved "let"
 -- la idea es que si puede consumir la palabra 'rec' devuelva true, y si "falla" devuelva false:
-     r <- reserved "rec"
+     (do
+         reserved "rec"
+         r <- True) <|> r <- False
      n <- var
      vts <- binders
      reservedOp ":"
@@ -270,43 +282,19 @@ stm :: P STerm
 stm = slet <|> sapp <|> slam <|>  sifz <|> sunaryOp <|> sfix
 
 -- | Parser de declaraciones azucaradas
-sdeclt :: P (SDecl STerm)
-sdeclt = do 
-     i <- getPos
-     reserved "let"
-     v <- var
-     reservedOp ":"
-     ty <- typeP
-     reservedOp "="
-     t <- stm
-     return (SDecl i v ty [] False t)
-     
--- | Parser de declaraciones de funciones azucaradas
-sdeclf :: P (SDecl STerm)
-sdeclf = do i <- getPos
+sdecl :: P (SDecl STerm)
+sdecl = do  i <- getPos
             reserved "let"
+            (do
+                reserved "rec"
+                r <- True) <|> r <- False
             f <- var
             nts <- binders
             reservedOp ":"
             fty <- typeP
             reservedOp "="
             t <- stm
-            return (SDecl i f fty nts False t)
-     
-sdeclfr :: P (SDecl STerm)
-sdeclfr = do i <- getPos
-             reserved "let"
-             reserved "rec"
-             f <- var
-             nts <- binders
-             reservedOp ":"
-             fty <- typeP
-             reservedOp "="
-             t <- stm
-             return (SDecl i f fty nts True t)
-
-sdecl :: P (SDecl STerm)
-sdecl = try sdeclfr <|> try sdeclf <|> sdeclt
+            return (SDecl i f fty nts r t)
 
 -- | Parser de programas con azucar sintactico (listas de declaraciones) 
 sprogram :: P [SDecl STerm]

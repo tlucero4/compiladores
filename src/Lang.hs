@@ -24,6 +24,7 @@ import Common ( Pos )
 data Ty = 
       NatTy 
     | FunTy Ty Ty
+    | NamedTy Name Ty
     deriving (Show,Eq)
 
 type Name = String
@@ -57,6 +58,7 @@ data STm info var =
   | SLam info [(Name, Ty)] (STm info var) 
   | SApp info (STm info var) (STm info var)
   | SUnaryOp info UnaryOp (STm info var)
+  | SUnaryOp' info UnaryOp -- operaciones sin aplicar
   | SFix info Name Ty Name Ty (STm info var)
 --  | SFix info [(Name, Ty)] (STm info var) -- realmente existe una version de Fix con multiples variables?
   | SIfZ info (STm info var) (STm info var) (STm info var)
