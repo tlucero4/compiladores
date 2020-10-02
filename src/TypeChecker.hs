@@ -50,14 +50,19 @@ tc (App p t u) bs = do
          return cod
 tc (Fix p f fty x xty t) bs = do
          (dom, cod) <- domCod (V p (Free f)) fty
-         when (dom /= xty) $ do
+         when ((ut dom) /= (ut xty)) $ do
            failPosPCF p "El tipo del argumento de un fixpoint debe coincidir con el \
                         \dominio del tipo de la función"
          ty' <- tc (openN [f, x] t) ((x,xty):(f,fty):bs)
          expect cod ty' t
          return fty
 
-
+-- | "ut" (unname type) elimina los sinonimos de tipos y devuelve el tipo real
+ut :: Ty -> Ty
+ut (NatTy)       = NatTy
+ut (FunTy t u)   = FunTy (ut t) (ut u)
+ut (NamedTy n t) = ut t
+        
 -- | @'typeError' t s@ lanza un error de tipo para el término @t@ 
 typeError :: MonadPCF m => Term   -- ^ término que se está chequeando  
                         -> String -- ^ mensaje de error
@@ -70,14 +75,15 @@ expect :: MonadPCF m => Ty    -- ^ tipo esperado
                      -> Ty    -- ^ tipo que se obtuvo
                      -> Term  -- ^ término que se está chequeando
                      -> m Ty
-expect ty ty' t = if ty == ty' then return ty 
-                               else typeError t $ 
-              "Tipo esperado: "++ ppTy ty
-            ++"\npero se obtuvo: "++ ppTy ty'
+expect ty ty' t = if (ut ty) == (ut ty') then return ty 
+                                         else typeError t $ 
+                        "Tipo esperado: "++ ppTy ty
+                        ++"\npero se obtuvo: "++ ppTy ty'
 
 -- | 'domCod chequea que un tipo sea función
 -- | devuelve un par con el tipo del dominio y el codominio de la función
 domCod :: MonadPCF m => Term -> Ty -> m (Ty, Ty)
+domCod t (NamedTy n ty) = domCod ty
 domCod t (FunTy d c) = return (d, c)
 domCod t ty = typeError t $ "Se esperaba un tipo función, pero se obtuvo: " ++ ppTy ty
 
@@ -91,7 +97,7 @@ tcDecl (TDecl p n nty t) = do
         Nothing -> do  --no está declarado 
                   s <- get
                   ty <- tc t (tyEnv s)
-                  when (ty /= nty) $ do
+                  when ((ut ty) /= (ut nty)) $ do
                     failPosPCF p "El tipo declarado no coincide con su cuerpo"
                   addTy n nty
         Just _  -> failPosPCF p $ n ++" ya está declarado"

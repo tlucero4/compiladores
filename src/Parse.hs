@@ -65,21 +65,6 @@ var = identifier
 getPos :: P Pos
 getPos = do pos <- getPosition
             return $ Pos (sourceLine pos) (sourceColumn pos)
-
-tyatom :: P Ty
-tyatom = (reserved "Nat" >> return NatTy)
-         <|> parens typeP
-         <|> (do
-                st <- identifier
-                return (UntrackedTy st))
-
-typeP :: P Ty
-typeP = try (do 
-          x <- tyatom
-          reservedOp "->"
-          y <- typeP
-          return (FunTy x y))
-      <|> tyatom
           
 const :: P Const
 const = CNat <$> num
@@ -182,11 +167,27 @@ parse s = case runP tm s "" of
 
 -- Sección para parsear azucar sintactica:
 
+tyatom :: P STy
+tyatom = (reserved "Nat" >> return SNatTy)
+         <|> parens typeP
+         <|> (do
+                i <- getPos
+                st <- identifier
+                return (SNamedTy i st)
+
+typeP :: P STy
+typeP = try (do 
+          x <- tyatom
+          reservedOp "->"
+          y <- typeP
+          return (SFunTy x y))
+      <|> tyatom
+      
 sconst :: P Const
 sconst = CNat <$> num
 
--- falta considerar la operacion sin aplicar y generar en ese caso un SUnaryOp'
--- si "a <- satom" falla, devolvemos la otra estructura
+-- esta implementacion queda desestimada
+{-
 sunaryOp :: P STerm
 sunaryOp = do
   i <- getPos
@@ -199,6 +200,16 @@ sunaryOp = do
        ("succ", SUnaryOp i Succ)
      , ("pred", SUnaryOp i Pred)
     ]
+    -}
+
+    -- ¿como hacemos para que en elab se diferencie entre un sunaryOp sin aplicacion con uno al que le sigue un termino?
+    -- ¿se podría usando sapp? ¿habria que ver en el desugar de SApp si hay un pred seguido de un termino?
+sunaryOp :: P STerm
+sunaryOp = do
+               reserved "succ"
+               return (SUnaryOp i Succ)
+           <|> reserved "pred"
+               return (SUnaryOp i Pred)
 
 satom :: P STerm
 satom =     (flip SConst <$> const <*> getPos)
@@ -206,7 +217,7 @@ satom =     (flip SConst <$> const <*> getPos)
        <|> parens stm
 
 --para parsear una lista de binders
-binders :: P [(Name, Ty)]
+binders :: P [(Name, STy)]
 binders = many (parens $ do 
                     v <- var
                     reservedOp ":"
@@ -291,16 +302,16 @@ sdecll = do  i <- getPos
             t <- stm
             return (SDecl i f fty nts r t)
 
-sdeclt :: P Ty
+sdeclt :: P (SDecl STerm)
 sdeclt = do i <- getPos
            reserved "type"
            st <- identifier
            reservedOp "="
            rt <- typeP
-           return (NamedTy i st rt)
+           return (SType i (SNamedTy st rt))
 
-sdecl :: P (Either (SDecl STerm) Ty)
-sdecl = (Left <$> sdecll) <|> (Right <$> sdeclt) 
+sdecl :: P (SDecl STerm)
+sdecl = sdecll <|> sdeclt
         
 -- | Parser de programas con azucar sintactico (listas de declaraciones) 
 sprogram :: P [SDecl STerm]
@@ -308,7 +319,7 @@ sprogram = many sdecl
 
 -- | Parsea una declaración a un término
 -- Útil para las sesiones interactivas
-sdeclOrSTm :: P (Either ((Either (SDecl STerm) Ty) STerm))
+sdeclOrSTm :: P (Either (SDecl STerm) STerm)
 sdeclOrSTm =  try (Right <$> stm) <|> (Left <$> sdecl)
 
 sparse :: String -> STerm

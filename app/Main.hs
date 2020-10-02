@@ -92,11 +92,11 @@ handleDecl (Decl p x t) = do
         -}
         
         
-handleSDecl ::  MonadPCF m => Either (SDecl STerm) STy -> m ()
+handleSDecl ::  MonadPCF m => SDecl STerm -> m ()
 handleSDecl d =
     case d of
-         Left l  -> handleSDeclL l
-         Right t -> handleSDeclT t
+         SDecl _ -> handleSDeclL d
+         SType _ -> handleSDeclT d
 
 handleSDeclL ::  MonadPCF m => SDecl STerm -> m ()
 handleSDeclL sd = do
@@ -105,11 +105,12 @@ handleSDeclL sd = do
             te <- eval t
             addDecl (Decl p x te)
 
-handleSDeclT :: MonadPCF m => Ty -> m ()
-handleSDeclT (NamedTy p st rt) =
-    case lookupSTy st of
-             Just _  -> failPosPCF p "El tipo "++st++" ya existe."
-             Nothing -> addSTy st rt
+handleSDeclT :: MonadPCF m => SDecl STerm -> m ()
+handleSDeclT (SType p t) = do
+                            (SNamedTy st rt) <- t -- es el unico nodo de STy que puede coincidir
+                            case lookupSTy st of
+                                Just _  -> failPosPCF p "El tipo "++st++" ya existe."
+                                Nothing -> addSTy st rt
              
 data Command = Compile CompileForm
              | Print String

@@ -24,10 +24,16 @@ import Common ( Pos )
 data Ty = 
       NatTy 
     | FunTy Ty Ty
-    | NamedTy Pos Name Ty
-    | UntrackedTy Pos Name
+    | NamedTy Name Ty
     deriving (Show,Eq)
-
+    
+-- | AST Azucarado de Tipos
+data STy = 
+      SNatTy
+    | SFunTy STy STy
+    | SNamedTy Pos Name
+    deriving (Show,Eq)
+    
 type Name = String
 
 data Const = CNat Int
@@ -37,33 +43,28 @@ data UnaryOp = Succ | Pred
   deriving Show
 
 -- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
-data Decl a =
-    Decl { declPos :: Pos, declName :: Name, declBody :: a }
-  | Eval a
+data Decl a = Decl { declPos :: Pos, declName :: Name, declBody :: a }
   deriving (Show,Functor)
 
-data TDecl a =
-    TDecl { tdeclPos :: Pos, tdeclName :: Name, tdeclType :: Ty, tdeclBody :: a }
-  | TEval a
+data TDecl a = TDecl { tdeclPos :: Pos, tdeclName :: Name, tdeclType :: Ty, tdeclBody :: a }
   deriving (Show,Functor)
   
 data SDecl a =
     SDecl { sDeclPos :: Pos, sDeclName :: Name, sDeclType :: Ty, sDeclVars :: [(Name, Ty)], sDeclRec :: Bool, sDeclBody :: a }
-  | SEval a
+  | SType { sDeclPos :: Pos, sNameType :: STy }
   deriving (Show,Functor)
   
 -- | AST superficial de los terminos. Es el que usamos para parsear la azucar sintáctica.
 data STm info var =
     SV info var
   | SConst info Const
-  | SLam info [(Name, Ty)] (STm info var) 
+  | SLam info [(Name, STy)] (STm info var) 
   | SApp info (STm info var) (STm info var)
-  | SUnaryOp info UnaryOp (STm info var)
-  | SUnaryOp' info UnaryOp -- operaciones sin aplicar
-  | SFix info Name Ty Name Ty (STm info var)
---  | SFix info [(Name, Ty)] (STm info var) -- realmente existe una version de Fix con multiples variables?
+  | SUnaryOp info UnaryOp -- operaciones sin aplicar
+  | SFix info Name STy Name STy (STm info var)
+--  | SFix info [(Name, Ty)] (STm info var)     ¿realmente existe una version de Fix con multiples variables?
   | SIfZ info (STm info var) (STm info var) (STm info var)
-  | SLet info Name Ty [(Name, Ty)] Bool (STm info var) (STm info var)
+  | SLet info Name STy [(Name, STy)] Bool (STm info var) (STm info var)
   deriving (Show, Functor)
   
 -- | AST de los términos. 

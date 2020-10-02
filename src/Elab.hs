@@ -40,17 +40,16 @@ buildFunType (n:ns) fty        = FunTy (snd n) (buildFunType ns fty)
 
 sLam :: Pos -> [(Name,Ty)] -> STerm
 sLam p [] t     = desugar t
-sLam p (n:ns) t = Lam p (fst n) (snd n) (sLam p ns t)
+sLam p (n:ns) t = Lam p (fst n) (desugarTy (snd n)) (sLam p ns t)
 
-sLet :: STerm -> STerm
-sLet (SLet p f fty [n]    True d a) = SLet p f (FunTy (snd n) ty) False (SFix p f (FunTy (snd n) ty) (fst n) (snd n) d) a
-sLet (SLet p f fty (n:ns) True d a) = sLet (SLet p f (buildFunType ns fty) [n] True (SLam p ns d) a)
+sLet :: Pos -> Name -> Ty -> [(Name,Ty)] -> Bool -> STerm -> STerm -> STerm
+sLet p f fty [n]    r d a = SLet p f (FunTy (snd n) ty) False (SFix p f (FunTy (snd n) ty) (fst n) (snd n) d) a
+sLet p f fty (n:ns) r d a = sLet p f (buildFunType ns fty) [n] r (SLam p ns d) a
 
-desugarTy :: MonadPCF m => Ty -> m Ty
-desugarTy (NatTy)           = NatTy
-desugarTy (FunTy t y)       = FunTy (desugarTy t) (desugarTy t)
-desugarTy (NamedTy p n t)   = NamedTy p n (desugarTy t)
-desugarTy (UntrackedTy p n) =
+desugarTy :: MonadPCF m => STy -> m Ty
+desugarTy (SNatTy)        = NatTy
+desugarTy (SFunTy t y)   = FunTy (desugarTy t) (desugarTy t)
+desugarTy (SNamedTy p n) =
     case lookupSTy n of
          Nothing -> failPosPCF p "El tipo "++n++" no existe."
          Just t  -> NamedTy p n (desugarTy t)
@@ -68,9 +67,11 @@ desugar (SFix p f fty n nty t) = Fix p f (desugarTy fty) n (desugarTy nty) (desu
 desugar (SIfZ p c t e)         = IfZ p (desugar c) (desugar t) (desugar e)
 desugar (SUnaryOp p o t)       = UnaryOp p o (desugar t)
 desugar (SUnaryOp' p o)        = Lam p (V p "x") NatTy (UnaryOp p o (V p "x"))
-desugar (SLet p _ _   []     _ _ _) = failPosPCF p "La función recursiva debe tener un argumento"
-desugar (SLet p f fty ns False d a) = desugar (SLet p f (desugarTy.buildFunType ns fty) (SLam p ns d) a)
-desugar (SLet p f fty ns True d a)  = desugar.sLet (SLet p f fty ns True d a)
+
+desugar (SLet p _ _   [] True _ _)  = failPosPCF p "La función recursiva debe tener un argumento"
+desugar (SLet p n nty [] False d a) = desugar (SLam p [(n,nty)] a d)
+desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
+desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)
 
 {-
 desugar (SLet p x xty d a)             = App p (Lam p x xty (desugar a)) (desugar d)
@@ -86,6 +87,6 @@ elab = elab'.desugar
 
 elab_sdecl :: SDecl STerm -> TDecl Term
 elab_sdecl (SDecl p n nty [] _ st)        = TDecl p n (desugarTy nty) (elab st)
-elab_sdecl (SDecl p n nty [v] True st)    = TDecl p n (desugarTy (FunTy (snd v) nty)) (elab' (sLam p vs st))
-elab_sdecl (SDecl p n nty (v:vs) True st) = elab_sdecl (SDecl p n (desugarTy.buildFunType vs nty) [v] True (SLam p vs st))
+elab_sdecl (SDecl p n nty [v] True st)    = TDecl p n (desugarTy (FunTy (snd v) nty)) (elab' (sLam p [] st))
+elab_sdecl (SDecl p n nty (v:vs) True st) = elab_sdecl (SDecl p n (buildFunType vs nty) [v] True (SLam p vs st))
 elab_sdecl (SDecl p n nty (v:vs) _ st)    = TDecl p n (desugarTy.buildFunType (v:vs) nty) (elab (SLam p vs st))
