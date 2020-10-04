@@ -8,7 +8,7 @@ Stability   : experimental
 
 -}
 
-module Parse (stm, tm, Parse.parse, decl, sdecl, runP, P, sprogram, program, sdeclOrSTm, declOrTm) where
+module Parse (stm, Parse.sparse, sdecl, runP, P, sprogram, sdeclOrSTm) where
 
 import Prelude hiding ( const )
 import Lang
@@ -68,7 +68,7 @@ getPos = do pos <- getPosition
           
 const :: P Const
 const = CNat <$> num
-
+{-
 unaryOp :: P NTerm
 unaryOp = do
   i <- getPos
@@ -116,12 +116,6 @@ ifz = do i <- getPos
          e <- tm
          return (IfZ i c t e)
 
-binding :: P (Name, Ty)
-binding = do v <- var
-             reservedOp ":"
-             ty <- typeP
-             return (v, ty)
-
 fix :: P NTerm
 fix = do i <- getPos
          reserved "fix"
@@ -164,16 +158,23 @@ parse s = case runP tm s "" of
             Right t -> t
             Left e -> error ("no parse: " ++ show s)
             
+            -}
 
 -- Sección para parsear azucar sintactica:
 
+binding :: P (Name, STy)
+binding = do v <- var
+             reservedOp ":"
+             ty <- typeP
+             return (v, ty)
+             
 tyatom :: P STy
 tyatom = (reserved "Nat" >> return SNatTy)
          <|> parens typeP
          <|> (do
                 i <- getPos
                 st <- identifier
-                return (SNamedTy i st)
+                return (SNamedTy i st))
 
 typeP :: P STy
 typeP = try (do 
@@ -204,12 +205,17 @@ sunaryOp = do
 
     -- ¿como hacemos para que en elab se diferencie entre un sunaryOp sin aplicacion con uno al que le sigue un termino?
     -- ¿se podría usando sapp? ¿habria que ver en el desugar de SApp si hay un pred seguido de un termino?
+unaryOpName :: P UnaryOp
+unaryOpName =
+      (reserved "succ" >> return Succ)
+  <|> (reserved "pred" >> return Pred)
+
 sunaryOp :: P STerm
 sunaryOp = do
-               reserved "succ"
-               return (SUnaryOp i Succ)
-           <|> reserved "pred"
-               return (SUnaryOp i Pred)
+             i <- getPos
+             o <- unaryOpName
+             return (SUnaryOp i o)
+
 
 satom :: P STerm
 satom =     (flip SConst <$> const <*> getPos)
@@ -270,9 +276,9 @@ slet = do
      i <- getPos
      reserved "let"
 -- la idea es que si puede consumir la palabra 'rec' devuelva true, y si "falla" devuelva false:
-     (do
-         reserved "rec"
-         r <- True) <|> r <- False
+     r <- ((do
+            reserved "rec"
+            return True) <|> return False)
      n <- var
      vts <- binders
      reservedOp ":"
@@ -289,11 +295,11 @@ stm = slet <|> sapp <|> slam <|>  sifz <|> sunaryOp <|> sfix
 
 -- | Parser de declaraciones azucaradas
 sdecll :: P (SDecl STerm)
-sdecll = do  i <- getPos
+sdecll = do i <- getPos
             reserved "let"
-            (do
-                reserved "rec"
-                r <- True) <|> r <- False
+            r <- ((do
+                     reserved "rec"
+                     return True) <|> return False)
             f <- var
             nts <- binders
             reservedOp ":"
@@ -304,11 +310,11 @@ sdecll = do  i <- getPos
 
 sdeclt :: P (SDecl STerm)
 sdeclt = do i <- getPos
-           reserved "type"
-           st <- identifier
-           reservedOp "="
-           rt <- typeP
-           return (SType i (SNamedTy st rt))
+            reserved "type"
+            st <- identifier
+            reservedOp "="
+            rt <- typeP
+            return (SType i st rt)
 
 sdecl :: P (SDecl STerm)
 sdecl = sdecll <|> sdeclt
@@ -321,6 +327,9 @@ sprogram = many sdecl
 -- Útil para las sesiones interactivas
 sdeclOrSTm :: P (Either (SDecl STerm) STerm)
 sdeclOrSTm =  try (Right <$> stm) <|> (Left <$> sdecl)
+
+runP :: P a -> String -> String -> Either ParseError a
+runP p s filename = runParser (whiteSpace *> p <* eof) () filename s
 
 sparse :: String -> STerm
 sparse s = case runP stm s "" of

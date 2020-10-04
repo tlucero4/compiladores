@@ -106,11 +106,10 @@ handleSDeclL sd = do
             addDecl (Decl p x te)
 
 handleSDeclT :: MonadPCF m => SDecl STerm -> m ()
-handleSDeclT (SType p t) = do
-                            (SNamedTy st rt) <- t -- es el unico nodo de STy que puede coincidir
-                            case lookupSTy st of
-                                Just _  -> failPosPCF p "El tipo "++st++" ya existe."
-                                Nothing -> addSTy st rt
+handleSDeclT (SType p s r) = do
+                            case lookupSTy s of
+                                Just _  -> failPosPCF p "El tipo "++s++" ya existe."
+                                Nothing -> addSTy s r
              
 data Command = Compile CompileForm
              | Print String

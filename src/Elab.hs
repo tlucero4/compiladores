@@ -13,6 +13,7 @@ fully named (@NTerm) a locally closed (@Term@)
 module Elab ( elab, elab_sdecl ) where
 
 import Lang
+import Common ( Pos )
 import Subst
 import MonadPCF
 
@@ -34,16 +35,16 @@ elab' (UnaryOp p o t)       = UnaryOp p o (elab' t)
 -- | 'desugar' transforma el AST superficial en un AST interno para
 -- eliminar toda la azucar sintáctica
 
-buildFunType :: [(Name,Ty)] -> Ty -> Ty
+buildFunType :: [(Name,STy)] -> STy -> STy
 buildFunType [] fty            = fty
-buildFunType (n:ns) fty        = FunTy (snd n) (buildFunType ns fty)
+buildFunType (n:ns) fty        = SFunTy (snd n) (buildFunType ns fty)
 
-sLam :: Pos -> [(Name,Ty)] -> STerm
+sLam :: Pos -> [(Name,STy)] -> STerm -> NTerm
 sLam p [] t     = desugar t
 sLam p (n:ns) t = Lam p (fst n) (desugarTy (snd n)) (sLam p ns t)
 
-sLet :: Pos -> Name -> Ty -> [(Name,Ty)] -> Bool -> STerm -> STerm -> STerm
-sLet p f fty [n]    r d a = SLet p f (FunTy (snd n) ty) False (SFix p f (FunTy (snd n) ty) (fst n) (snd n) d) a
+sLet :: Pos -> Name -> Ty -> [(Name,STy)] -> Bool -> STerm -> STerm -> STerm
+sLet p f fty [n]    r d a = SLet p f (SFunTy (snd n) fty) False (SFix p f (SFunTy (snd n) fty) (fst n) (snd n) d) a
 sLet p f fty (n:ns) r d a = sLet p f (buildFunType ns fty) [n] r (SLam p ns d) a
 
 desugarTy :: MonadPCF m => STy -> m Ty
@@ -59,14 +60,16 @@ desugar (SV p v)               = V p v
 desugar (SConst p c)           = Const p c
 desugar (SLam p [] t)          = failPosPCF p "La función debe tener un argumento"
 desugar (SLam p l t)           = sLam p l t
-desugar (SApp p h a)           = App p (desugar h) (desugar a)
+desugar (SApp p h a)           =
+    case h of
+         SUnaryOp p o -> UnaryOp p o (desugar a)
+         _            -> App p (desugar h) (desugar a)
 -- Fix deberia tener una lista de variables con sus tipos? En la teoria no se usa nunca
 desugar (SFix p f fty n nty t) = Fix p f (desugarTy fty) n (desugarTy nty) (desugar t)
 --desugar (SFix p [] t)          = error
 --desugar (SFix p n:ns t)        = desugarFix p n:ns t
 desugar (SIfZ p c t e)         = IfZ p (desugar c) (desugar t) (desugar e)
-desugar (SUnaryOp p o t)       = UnaryOp p o (desugar t)
-desugar (SUnaryOp' p o)        = Lam p (V p "x") NatTy (UnaryOp p o (V p "x"))
+desugar (SUnaryOp p o)         = Lam p (V p "x") NatTy (UnaryOp p o (V p "x"))
 
 desugar (SLet p _ _   [] True _ _)  = failPosPCF p "La función recursiva debe tener un argumento"
 desugar (SLet p n nty [] False d a) = desugar (SLam p [(n,nty)] a d)
@@ -81,9 +84,6 @@ desugar (SLetFunRec p f fty (n:ns) d a) | null ns   = desugar (SLet p f (FunTy (
                                                       (SFix p f (FunTy (snd n) fty) (fst n) (snd n) d) a)
                                         | otherwise = desugar (SLetFunRec p f (buildFunType ns fty) [n] (SLam p ns d) a) 
                                         -}
-
-elab :: STerm -> Term
-elab = elab'.desugar
 
 elab_sdecl :: SDecl STerm -> TDecl Term
 elab_sdecl (SDecl p n nty [] _ st)        = TDecl p n (desugarTy nty) (elab st)

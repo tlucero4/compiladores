@@ -32,7 +32,7 @@ data STy =
       SNatTy
     | SFunTy STy STy
     | SNamedTy Pos Name
-    deriving (Show,Eq)
+    deriving (Show)
     
 type Name = String
 
@@ -50,8 +50,8 @@ data TDecl a = TDecl { tdeclPos :: Pos, tdeclName :: Name, tdeclType :: Ty, tdec
   deriving (Show,Functor)
   
 data SDecl a =
-    SDecl { sDeclPos :: Pos, sDeclName :: Name, sDeclType :: Ty, sDeclVars :: [(Name, Ty)], sDeclRec :: Bool, sDeclBody :: a }
-  | SType { sDeclPos :: Pos, sNameType :: STy }
+    SDecl { sDeclPos :: Pos, sDeclName :: Name, sDeclType :: STy, sDeclVars :: [(Name, STy)], sDeclRec :: Bool, sDeclBody :: a }
+  | SType { sDeclPos :: Pos, sNameType :: String, sSynType :: STy }
   deriving (Show,Functor)
   
 -- | AST superficial de los terminos. Es el que usamos para parsear la azucar sintáctica.
