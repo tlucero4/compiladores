@@ -110,8 +110,8 @@ elab_sdecl (SDecl p n nty [] _ st)        = do dty <- desugarTy nty
                                                t <- elab st
                                                return (TDecl p n dty t)
 elab_sdecl (SDecl p n nty [v] True st)    = do dty <- desugarTy (SFunTy (snd v) nty)
-                                               sl <- sLam p [] st
-                                               return (TDecl p n dty (elab' sl))
+                                               sf <- elab (SFix p n (SFunTy (snd v) nty) (fst v) (snd v) st)
+                                               return (TDecl p n dty sf)
 elab_sdecl (SDecl p n nty (v:vs) True st) = elab_sdecl (SDecl p n (buildFunType vs nty) [v] True (SLam p vs st))
 elab_sdecl (SDecl p n nty (v:vs) _ st)    = do dty <- desugarTy (buildFunType (v:vs) nty)
                                                l <- elab (SLam p vs st)

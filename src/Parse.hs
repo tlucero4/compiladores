@@ -220,6 +220,7 @@ sunaryOp = do
 satom :: P STerm
 satom =     (flip SConst <$> const <*> getPos)
        <|> flip SV <$> var <*> getPos
+       <|> sunaryOp
        <|> parens stm
 
 --para parsear una lista de binders
@@ -291,7 +292,7 @@ slet = do
 
 -- | Parser de términos azucarados
 stm :: P STerm
-stm = slet <|> sapp <|> slam <|>  sifz <|> sunaryOp <|> sfix
+stm = sapp <|> slet <|> slam <|>  sifz <|> sunaryOp <|> sfix
 
 -- | Parser de declaraciones azucaradas
 sdecll :: P (SDecl STerm)

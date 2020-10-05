@@ -27,7 +27,7 @@ import Global ( GlEnv(..) )
 import Errors
 import Lang
 --import Parse ( P, tm, program, declOrTm, runP )
-import Parse ( P, stm, sprogram, sdeclOrSTm, runP )
+import Parse ( P, stm, sdecl, sprogram, sdeclOrSTm, runP )
 import Elab ( elab, elab_sdecl, desugar )
 import Eval ( eval )
 import PPrint ( pp , ppTy )
@@ -114,6 +114,7 @@ handleSDeclT (SType p s r) = do ns <- lookupSTy s
              
 data Command = Compile CompileForm
              | Print String
+             | PrintD String
              | Type String
              | Browse
              | Quit
@@ -151,6 +152,7 @@ commands
        Cmd [":load"]        "<file>"  (Compile . CompileFile)
                                                      "Cargar un programa desde un archivo",
        Cmd [":print"]       "<exp>"   Print          "Imprime un término y sus ASTs sin evaluarlo",
+       Cmd [":printd"]      "<exp>"   PrintD         "Imprime una declaración y sus ASTs",
        Cmd [":type"]        "<exp>"   Type           "Chequea el tipo de una expresión",
        Cmd [":quit",":Q"]        ""        (const Quit)   "Salir del intérprete",
        Cmd [":help",":?"]   ""        (const Help)   "Mostrar esta lista de comandos" ]
@@ -182,6 +184,7 @@ handleCommand cmd = do
                           CompileFile f        -> put (s {lfile=f}) >> compileFile f
                       return True
        Print e   -> printPhrase e >> return True
+       PrintD d  -> printDecl d >> return True
        Type e    -> typeCheckPhrase e >> return True
 
 compilePhrase ::  MonadPCF m => String -> m ()
@@ -214,6 +217,16 @@ printPhrase x =
     printPCF (show x')
     printPCF "\nTerm:"
     printPCF (show t)
+
+printDecl   :: MonadPCF m => String -> m ()
+printDecl x =
+  do
+    x' <- parseIO "<interactive>" sdecl x
+    dx <- elab_sdecl x'
+    printPCF "SDecl:"
+    printPCF (show x')
+    printPCF "\nDecl:"
+    printPCF (show dx)
 
 typeCheckPhrase :: MonadPCF m => String -> m ()
 typeCheckPhrase x = do

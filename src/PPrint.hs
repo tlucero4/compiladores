@@ -65,6 +65,7 @@ ty2doc :: Ty -> Doc
 ty2doc NatTy     = text "Nat"
 ty2doc (FunTy x@(FunTy _ _) y) = sep [parens (ty2doc x),text "->",ty2doc y]
 ty2doc (FunTy x y) = sep [ty2doc x,text "->",ty2doc y] 
+ty2doc (NamedTy n t) = text n
 
 -- | Pretty printer para tipos (String)
 ppTy :: Ty -> String
