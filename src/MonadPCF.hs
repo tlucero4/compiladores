@@ -19,12 +19,12 @@ module MonadPCF (
   runPCF,
   lookupDecl,
   lookupTy,
-  lookupSTy,
+  lookupNTy,
   printPCF,
   failPosPCF,
   failPCF,
   addDecl,
-  addSTy,
+  addNTy,
   addTy,
   catchErrors,
   MonadPCF,
@@ -66,8 +66,8 @@ addDecl d = modify (\s -> s { glb = d : glb s })
 addTy :: MonadPCF m => Name -> Ty -> m ()
 addTy n ty = modify (\s -> s { tyEnv = (n,ty) : tyEnv s })
 
-addSTy :: MonadPCF m => Name -> STy -> m ()
-addSTy n ty = modify (\s -> s { namedTy = (n,ty) : namedTy s })
+addNTy :: MonadPCF m => Name -> Ty -> m ()
+addNTy n ty = modify (\s -> s { namedTy = (n,ty) : namedTy s })
 
 hasName :: Name -> Decl a -> Bool
 hasName nm (Decl { declName = nm' }) = nm == nm'
@@ -84,8 +84,8 @@ lookupTy nm = do
       s <- get
       return $ lookup nm (tyEnv s)
 
-lookupSTy :: MonadPCF m => Name -> m (Maybe STy)
-lookupSTy nm = do
+lookupNTy :: MonadPCF m => Name -> m (Maybe Ty)
+lookupNTy nm = do
       s <- get
       return $ lookup nm (namedTy s)
       

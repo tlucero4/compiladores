@@ -10,7 +10,7 @@ Este módulo permite elaborar términos y declaraciones para convertirlas desde
 fully named (@NTerm) a locally closed (@Term@) 
 -}
 
-module Elab ( elab, elab_sdecl, desugar ) where
+module Elab ( elab, elab_sdecl, desugar, desugarTy ) where
 
 import Lang
 import Common ( Pos )
@@ -56,10 +56,9 @@ desugarTy (SFunTy t y)   = do   dt <- desugarTy t
                                 dy <- desugarTy y
                                 return (FunTy dt dy)
 desugarTy (SNamedTy p n) = do
-    tn <- lookupSTy n
+    tn <- lookupNTy n
     case tn of
-         Just t  -> do  dt <- desugarTy t
-                        return (NamedTy n dt)
+         Just t  -> return (NamedTy n t)
          _       -> failPosPCF p $ "El tipo "++n++" no existe."
 
 desugar :: MonadPCF m => STerm -> m NTerm
@@ -93,14 +92,6 @@ desugar (SLet p n nty [] False d a) = do dd <- desugar d
 desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)
 
-{-
-desugar (SLet p x xty d a)             = App p (Lam p x xty (desugar a)) (desugar d)
-desugar (SLetFun p f fty nts d a)      = 
-desugar (SLetFunRec p f fty [] d a)    = failPosPCF p "La función recursiva debe tener un nombre"
-desugar (SLetFunRec p f fty (n:ns) d a) | null ns   = desugar (SLet p f (FunTy (snd n) fty)
-                                                      (SFix p f (FunTy (snd n) fty) (fst n) (snd n) d) a)
-                                        | otherwise = desugar (SLetFunRec p f (buildFunType ns fty) [n] (SLam p ns d) a) 
-                                        -}
 elab :: MonadPCF m => STerm -> m Term
 elab t = do dt <- desugar t
             return (elab' dt)

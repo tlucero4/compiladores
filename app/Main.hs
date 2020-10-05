@@ -28,11 +28,11 @@ import Errors
 import Lang
 --import Parse ( P, tm, program, declOrTm, runP )
 import Parse ( P, stm, sdecl, sprogram, sdeclOrSTm, runP )
-import Elab ( elab, elab_sdecl, desugar )
+import Elab ( elab, elab_sdecl, desugar, desugarTy )
 import Eval ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
-import TypeChecker ( tc, tcDecl, tyc )
+import TypeChecker ( tc, tcDecl )
 
 prompt :: String
 prompt = "PCF> "
@@ -90,29 +90,20 @@ handleDecl (Decl p x t) = do
         te <- eval tt
         addDecl (Decl p x te)
         -}
-        
-        
-handleSDecl ::  MonadPCF m => SDecl STerm -> m ()
-handleSDecl d =
-    case d of
-         SDecl _ _ _ _ _ _ -> handleSDeclL d
-         SType _ _ _ -> handleSDeclT d
 
-handleSDeclL ::  MonadPCF m => SDecl STerm -> m ()
-handleSDeclL sd = do
-            d <- elab_sdecl sd
-            let (TDecl p x xty t) = d
-            tcDecl (TDecl p x xty t)
-            te <- eval t
-            addDecl (Decl p x te)
+handleSDecl :: MonadPCF m => SDecl STerm -> m ()
+handleSDecl (SType p n t) = do ns <- lookupNTy n
+                               case ns of
+                                    Just _  -> failPosPCF p $ "El tipo "++n++" ya existe."
+                                    Nothing -> do   dt <- desugarTy t
+                                                    addNTy n dt
+handleSDecl sd = do  -- No es una declaración de tipo. Es decir, es un let ...
+                    d <- elab_sdecl sd
+                    let (TDecl p x xty t) = d
+                    tcDecl (TDecl p x xty t)
+                    te <- eval t
+                    addDecl (Decl p x te)
 
-handleSDeclT :: MonadPCF m => SDecl STerm -> m ()
-handleSDeclT (SType p s r) = do ns <- lookupSTy s
-                                case ns of
-                                    Just _  -> failPosPCF p $ "El tipo "++s++" ya existe."
-                                    Nothing -> do   tyc r -- Nos aseguramos de que el tipo real del sinonimo sea algo existente.
-                                                    addSTy s r
-             
 data Command = Compile CompileForm
              | Print String
              | PrintD String

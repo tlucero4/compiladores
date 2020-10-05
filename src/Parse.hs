@@ -298,7 +298,7 @@ slet = do
 
 -- | Parser de términos azucarados
 stm :: P STerm
-stm = sapp <|> slet <|> slam <|>  sifz <|> sunaryOp <|> sfix
+stm = sapp <|> slet <|> slam <|> sifz <|> sfix
 
 -- | Parser de declaraciones azucaradas
 sdecll :: P (SDecl STerm)

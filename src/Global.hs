@@ -16,7 +16,7 @@ data GlEnv = GlEnv {
   lfile :: String,      -- ^ Último archivo cargado.
   glb :: [Decl Term],   -- ^ Entorno con declaraciones globales
   tyEnv :: [(Name,Ty)],  -- ^ Entorno de tipado de declaraciones globales
-  namedTy :: [(Name,STy)] -- ^ Entorno de sinonimos de tipos
+  namedTy :: [(Name,Ty)] -- ^ Entorno de sinonimos de tipos
 }
 
 -- | Valor del estado inicial
