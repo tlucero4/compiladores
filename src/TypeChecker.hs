@@ -83,7 +83,7 @@ expect ty ty' t = if (ut ty) == (ut ty') then return ty
 -- | 'domCod chequea que un tipo sea función
 -- | devuelve un par con el tipo del dominio y el codominio de la función
 domCod :: MonadPCF m => Term -> Ty -> m (Ty, Ty)
-domCod t (NamedTy n ty) = domCod ty
+domCod t (NamedTy n ty) = domCod t ty
 domCod t (FunTy d c) = return (d, c)
 domCod t ty = typeError t $ "Se esperaba un tipo función, pero se obtuvo: " ++ ppTy ty
 

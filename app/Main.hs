@@ -28,7 +28,7 @@ import Errors
 import Lang
 --import Parse ( P, tm, program, declOrTm, runP )
 import Parse ( P, stm, sprogram, sdeclOrSTm, runP )
-import Elab ( elab, elab_sdecl )
+import Elab ( elab, elab_sdecl, desugar )
 import Eval ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
@@ -95,21 +95,22 @@ handleDecl (Decl p x t) = do
 handleSDecl ::  MonadPCF m => SDecl STerm -> m ()
 handleSDecl d =
     case d of
-         SDecl _ -> handleSDeclL d
-         SType _ -> handleSDeclT d
+         SDecl _ _ _ _ _ _ -> handleSDeclL d
+         SType _ _ _ -> handleSDeclT d
 
 handleSDeclL ::  MonadPCF m => SDecl STerm -> m ()
 handleSDeclL sd = do
-            let (TDecl p x xty t) = elab_sdecl sd
+            d <- elab_sdecl sd
+            let (TDecl p x xty t) = d
             tcDecl (TDecl p x xty t)
             te <- eval t
             addDecl (Decl p x te)
 
 handleSDeclT :: MonadPCF m => SDecl STerm -> m ()
-handleSDeclT (SType p s r) = do
-                            case lookupSTy s of
-                                Just _  -> failPosPCF p "El tipo "++s++" ya existe."
-                                Nothing -> addSTy s r
+handleSDeclT (SType p s r) = do ns <- lookupSTy s
+                                case ns of
+                                    Just _  -> failPosPCF p $ "El tipo "++s++" ya existe."
+                                    Nothing -> addSTy s r
              
 data Command = Compile CompileForm
              | Print String
@@ -194,7 +195,7 @@ compilePhrase x =
 --handleTerm ::  MonadPCF m => NTerm -> m ()
 handleSTerm ::  MonadPCF m => STerm -> m ()
 handleSTerm t = do
-         let tt = elab t
+         tt <- elab t
          s <- get
          ty <- tc tt (tyEnv s)
          te <- eval tt
@@ -204,9 +205,10 @@ printPhrase   :: MonadPCF m => String -> m ()
 printPhrase x =
   do
     x' <- parseIO "<interactive>" stm x
-    let ex = elab x'
-    t  <- case x' of 
-           (SV p f) -> maybe ex id <$> lookupDecl f
+    ex <- elab x'
+    dx <- desugar x'
+    t  <- case dx of 
+           (V p f) -> maybe ex id <$> lookupDecl f
            _        -> return ex  
     printPCF "STerm:"
     printPCF (show x')
@@ -216,7 +218,7 @@ printPhrase x =
 typeCheckPhrase :: MonadPCF m => String -> m ()
 typeCheckPhrase x = do
          t <- parseIO "<interactive>" stm x
-         let tt = elab t
+         tt <- elab t
          s <- get
          ty <- tc tt (tyEnv s)
          printPCF (ppTy ty)
