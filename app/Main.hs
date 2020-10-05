@@ -32,7 +32,7 @@ import Elab ( elab, elab_sdecl, desugar )
 import Eval ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
-import TypeChecker ( tc, tcDecl )
+import TypeChecker ( tc, tcDecl, tyc )
 
 prompt :: String
 prompt = "PCF> "
@@ -110,7 +110,8 @@ handleSDeclT :: MonadPCF m => SDecl STerm -> m ()
 handleSDeclT (SType p s r) = do ns <- lookupSTy s
                                 case ns of
                                     Just _  -> failPosPCF p $ "El tipo "++s++" ya existe."
-                                    Nothing -> addSTy s r
+                                    Nothing -> do   tyc r -- Nos aseguramos de que el tipo real del sinonimo sea algo existente.
+                                                    addSTy s r
              
 data Command = Compile CompileForm
              | Print String

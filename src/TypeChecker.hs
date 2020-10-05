@@ -9,7 +9,8 @@ Stability   : experimental
 -}
 module TypeChecker (
    tc,
-   tcDecl 
+   tcDecl,
+   tyc
    ) where
 
 import Lang
@@ -56,6 +57,17 @@ tc (Fix p f fty x xty t) bs = do
          ty' <- tc (openN [f, x] t) ((x,xty):(f,fty):bs)
          expect cod ty' t
          return fty
+
+         
+tyc :: MonadPCF m => STy -> m Bool
+tyc (SNatTy) = return True
+tyc (SFunTy t u) = do ct <- tyc t
+                      cu <- tyc u
+                      return (ct && cu)
+tyc (SNamedTy p n) = do ln <- lookupSTy n
+                        case ln of
+                             Nothing -> failPosPCF p $ "El tipo "++n++" no existe."
+                             Just _ -> return True
 
 -- | "ut" (unname type) elimina los sinonimos de tipos y devuelve el tipo real
 ut :: Ty -> Ty
