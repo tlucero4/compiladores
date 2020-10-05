@@ -209,13 +209,19 @@ unaryOpName :: P UnaryOp
 unaryOpName =
       (reserved "succ" >> return Succ)
   <|> (reserved "pred" >> return Pred)
+  
+tyvar :: P Name
+tyvar = Tok.lexeme lexer $ do
+ c  <- upper
+ cs <- option "" identifier
+ return (c:cs)
+
 
 sunaryOp :: P STerm
 sunaryOp = do
              i <- getPos
              o <- unaryOpName
              return (SUnaryOp i o)
-
 
 satom :: P STerm
 satom =     (flip SConst <$> const <*> getPos)
@@ -312,7 +318,7 @@ sdecll = do i <- getPos
 sdeclt :: P (SDecl STerm)
 sdeclt = do i <- getPos
             reserved "type"
-            st <- identifier
+            st <- tyvar
             reservedOp "="
             rt <- typeP
             return (SType i st rt)
