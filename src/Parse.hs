@@ -230,17 +230,18 @@ satom =     (flip SConst <$> const <*> getPos)
        <|> parens stm
 
 --para parsear una lista de binders
-binders :: P [(Name, STy)]
+binders :: P [[(Name, STy)]]
 binders = many (parens $ do 
-                    v <- var
+                    vs <- many1 var
                     reservedOp ":"
-                    ty <- typeP 
-                    return (v,ty))
+                    ty <- typeP
+                    return (map (\n -> (n, ty)) vs))
          
 slam :: P STerm
 slam = do i <- getPos
           reserved "fun"
-          vts <- binders
+          vts' <- binders
+          let vts = concat vts'
           reservedOp "->"
           t <- stm
           return (SLam i vts t)
@@ -287,7 +288,8 @@ slet = do
             reserved "rec"
             return True) <|> return False)
      n <- var
-     vts <- binders
+     vts' <- binders
+     let vts = concat vts'
      reservedOp ":"
      ty <- typeP
      reservedOp "="
@@ -308,7 +310,8 @@ sdecll = do i <- getPos
                      reserved "rec"
                      return True) <|> return False)
             f <- var
-            nts <- binders
+            nts' <- binders
+            let nts = concat nts'
             reservedOp ":"
             fty <- typeP
             reservedOp "="

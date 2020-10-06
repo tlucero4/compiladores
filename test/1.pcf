@@ -1,0 +1,16 @@
+let rec suma (m : Nat) (n : Nat) : Nat = ifz n then m else succ (suma m (pred n))
+let rec resta (m : Nat) (n : Nat) : Nat = ifz n then m else resta (pred m) (pred n)
+let rec mult (m : Nat) (n : Nat) : Nat = ifz n then n else suma m (mult m (pred n))
+let rec exp (m : Nat) (n : Nat) : Nat = ifz n then (succ n) else mult m (exp m (pred n))
+let rec fact (n : Nat) : Nat = ifz n then (succ n) else mult n (fact (pred n))
+
+type Bool = Nat
+let true : Bool = 1
+let false : Bool = 0
+let ifthenelse (c : Bool) (t : Nat) (e : Nat) : Nat = ifz c then t else e
+
+let pair (a : Nat ) (b : Nat ) (c : Bool) : Nat = ifthenelse c a b
+let proj1 (f : Nat -> Nat) : Nat = f 0
+let proj2 (f : Nat -> Nat) : Nat = f 1
+
+let rec gcd (m : Nat) (n : Nat) : Nat = ifz n then m else (ifz m then n else (ifz (resta n m) then gcd (resta m n) n else gcd m (resta n m)))
