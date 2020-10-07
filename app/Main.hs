@@ -29,7 +29,7 @@ import Lang
 --import Parse ( P, tm, program, declOrTm, runP )
 import Parse ( P, stm, sdecl, sprogram, sdeclOrSTm, runP )
 import Elab ( elab, elab_sdecl, desugar, desugarTy )
-import Eval ( eval )
+import CEK ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
 import TypeChecker ( tc, tcDecl )
@@ -144,7 +144,7 @@ commands
        Cmd [":load"]        "<file>"  (Compile . CompileFile)
                                                      "Cargar un programa desde un archivo",
        Cmd [":print"]       "<exp>"   Print          "Imprime un término y sus ASTs sin evaluarlo",
-       Cmd [":printd"]      "<exp>"   PrintD         "Imprime una declaración y sus ASTs",
+       Cmd [":dprint"]      "<exp>"   PrintD         "Imprime una declaración y sus ASTs",
        Cmd [":type"]        "<exp>"   Type           "Chequea el tipo de una expresión",
        Cmd [":quit",":Q"]        ""        (const Quit)   "Salir del intérprete",
        Cmd [":help",":?"]   ""        (const Help)   "Mostrar esta lista de comandos" ]
