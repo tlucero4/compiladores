@@ -19,15 +19,22 @@ data Fr =
 type Kont = [Fr]
 
 data Clos = 
-      ClosFun Ent Name Term
-    | ClosFix Ent Name Name Term
-    
+      ClosFun Ent Name Ty Term
+    | ClosFix Ent Name Ty Name Ty Term
+{-
+instance Show Clos where
+   show (ClosFun e x t) = "Fun (Ent "++show e++")"++show x++" -> "++show t
+   show (ClosFix e f x t) = "Fix (Ent "++show e++")"++show f++" "++show x++" -> "++show t
+   -}
 -- | AST de Valores
 data Val = 
       N Int 
     | C Clos
-
-    
+{-
+instance Show Val where
+   show (N n) = "( VNat "++show n++")"
+   show (C c) = "( VClo "++show c++")"
+   -}
 {-
 
 Que hacer con los indices?
@@ -51,8 +58,8 @@ search (V _ (Free n)) e k = do
         Nothing -> failPCF $ "Error de ejecución: variable no declarada: " ++ ppName n 
         Just t -> search t e k
 search (Const _ (CNat n)) e k = destroy (N n) k
-search (Lam _ x _ t) e k = destroy (C (ClosFun e x t)) k -- chequear si va name o var
-search (Fix _ f _ x _ t) e k = destroy (C (ClosFix e f x t)) k
+search (Lam _ x xty t) e k = destroy (C (ClosFun e x xty t)) k
+search (Fix _ f fty x xty t) e k = destroy (C (ClosFix e f fty x xty t)) k
 
 destroy :: MonadPCF m => Val -> Kont -> m Val
 destroy v [] = return v
@@ -64,35 +71,38 @@ destroy (N _) ((KIfZ e t u):k) = search u e k
 destroy (C c) ((KArg e t):k) = search t e ((KClos c):k)
 destroy v ((KClos c):k) =
     case c of
-         (ClosFun e _ t) -> search t (v:e) k
-         (ClosFix e _ _ t) -> search t (v:(C c):e) k  
+         (ClosFun e _ _ t) -> search t (v:e) k
+         (ClosFix e _ _ _ _ t) -> search t (v:(C c):e) k  
         
 eval :: MonadPCF m => Term -> m Term
 eval t = do
     v <- search t [] []
     return (vtot v)
 
+--{-
+-- Value to Term
 vtot :: Val -> Term
 vtot v =
     case v of
          N n -> Const NoPos (CNat n)
          C c -> case c of
-                  ClosFun [] x t -> Lam NoPos x NatTy t
-                  ClosFun e  x t -> Lam NoPos x NatTy (rfv t e)
-                  ClosFix []  f x t -> Fix NoPos f NatTy x NatTy t
-                  ClosFix [v] f x t -> Fix NoPos f NatTy x NatTy t
-                  ClosFix e   f x t -> Fix NoPos f NatTy x NatTy (rfv t e)
-                                        
+                  ClosFun [] x xty t -> Lam NoPos x xty t
+                  ClosFun e  x xty t -> Lam NoPos x xty (rfv t e 0)
+                  ClosFix []  f fty x xty t -> Fix NoPos f fty x xty t
+                  ClosFix e   f fty x xty t -> Fix NoPos f fty x xty (rfv t e 0)
+
 -- Resignify Free Variables
-rfv :: Term -> Ent -> Term
-rfv t@(V _ (Bound 0)) e = t
-rfv t@(V _ (Bound n)) e = vtot (e !! (n-1))
-rfv (Lam i n ty t) e = Lam i n ty (rfv t e)
-rfv (App i t u) e = App i (rfv t e) (rfv u e)
-rfv (UnaryOp i o t) e = UnaryOp i o (rfv t e)
-rfv (Fix i f fty x xty t) e = Fix i f fty x xty (rfv t e)
-rfv (IfZ i c t u) e = IfZ i (rfv c e) (rfv t e) (rfv u e)
-rfv t _ = t
+rfv :: Term -> Ent -> Int -> Term
+rfv t@(V _ (Bound 0)) e k = t
+rfv t@(V _ (Bound n)) e k = vtot (e !! (n - 1 + k))
+rfv (Lam i n ty t) e k = Lam i n ty (rfv t e (k+1))
+rfv (App i t u) e k = App i (rfv t e k) (rfv u e k)
+rfv (UnaryOp i o t) e k = UnaryOp i o (rfv t e k)
+rfv (Fix i f fty x xty t) e k = Fix i f fty x xty (rfv t e (k+2))
+rfv (IfZ i c t u) e k = IfZ i (rfv c e k) (rfv t e k) (rfv u e k)
+rfv t _ _ = t
+---}
+
 
 {- Version debug
 
@@ -102,38 +112,40 @@ vtot v =
          N n -> return (Const NoPos (CNat n))
          C c -> case c of
                   ClosFun [] x t -> return (Lam NoPos x NatTy t)
-                  ClosFun e  x t -> do  tt <- rfv t e
+                  ClosFun e  x t -> do  printPCF ("Fun con entorno: "++show e++"\nNombre: "++show x++"\nTermino: "++show t++"\n")
+                                        tt <- rfv t e
                                         return (Lam NoPos x NatTy tt)
                   ClosFix []  f x t -> return (Fix NoPos f NatTy x NatTy t)
                   ClosFix [v] f x t -> return (Fix NoPos f NatTy x NatTy t)
-                  ClosFix e   f x t -> do   tt <- rfv t e
+                  ClosFix e   f x t -> do   printPCF ("Fix con entorno: "++show e++"\nNombre-Arg: "++show f++" "++show x++"\nTermino: "++show t++"\n")
+                                            tt <- rfv t e
                                             return (Fix NoPos f NatTy x NatTy tt)
 
                                             
 rfv :: MonadPCF m => Term -> Ent -> m Term
 
-rfv t@(V _ (Bound 0)) e = do printPCF ("T " ++ show t )
-                           return t
-rfv t@(V _ (Bound n)) e = do printPCF ("T " ++ show t )
-                           vtot (e !! (n-1))
-rfv (Lam i n ty t) e = do printPCF ("T " ++ show t )
+rfv t@(V _ (Bound 0)) e = do    printPCF ("T " ++ show t )
+                                return t
+rfv t@(V _ (Bound n)) e = do    printPCF ("T " ++ show t )
+                                vtot (e !! (n-1))
+rfv (Lam i n ty t) e = do   printPCF ("T " ++ show t )
+                            tt <- rfv t e
+                            return (Lam i n ty tt)
+rfv (App i t u) e = do  printPCF ("T " ++ show t )
                         tt <- rfv t e
-                        return (Lam i n ty tt)
-rfv (App i t u) e = do printPCF ("T " ++ show t )
-                     tt <- rfv t e
-                     tu <- rfv u e
-                     return (App i tt tu)
-rfv (UnaryOp i o t) e = do printPCF ("T " ++ show t )
-                         tt <- rfv t e
-                         return (UnaryOp i o tt)
-rfv (Fix i f fty x xty t) e = do printPCF ("T " ++ show t )
-                               tt <- rfv t e
-                               return (Fix i f fty x xty tt)
-rfv (IfZ i c t u) e = do printPCF ("T " ++ show t )
-                       tc <- rfv c e
-                       tt <- rfv t e
-                       tu <- rfv u e
-                       return (IfZ i tc tt tu)
+                        tu <- rfv u e
+                        return (App i tt tu)
+rfv (UnaryOp i o t) e = do  printPCF ("T " ++ show t )
+                            tt <- rfv t e
+                            return (UnaryOp i o tt)
+rfv (Fix i f fty x xty t) e = do    printPCF ("T " ++ show t )
+                                    tt <- rfv t e
+                                    return (Fix i f fty x xty tt)
+rfv (IfZ i c t u) e = do    printPCF ("T " ++ show t )
+                            tc <- rfv c e
+                            tt <- rfv t e
+                            tu <- rfv u e
+                            return (IfZ i tc tt tu)
 rfv t _ = return t
 
 -}
