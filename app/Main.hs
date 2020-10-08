@@ -97,7 +97,7 @@ handleSDecl (SType p n t) = do ns <- lookupNTy n
                                     Just _  -> failPosPCF p $ "El tipo "++n++" ya existe."
                                     Nothing -> do   dt <- desugarTy t
                                                     addNTy n dt
-handleSDecl sd = do  -- No es una declaración de tipo. Es decir, es un let ...
+handleSDecl sd = do
                     d <- elab_sdecl sd
                     let (TDecl p x xty t) = d
                     tcDecl (TDecl p x xty t)

@@ -5,7 +5,6 @@ import Global ( GlEnv(..) )
 import MonadPCF
 import PPrint
 import Common ( Pos(NoPos) )
-import TypeChecker ( tc )
 
 type Ent = [Val]
 
@@ -66,13 +65,75 @@ destroy (C c) ((KArg e t):k) = search t e ((KClos c):k)
 destroy v ((KClos c):k) =
     case c of
          (ClosFun e _ t) -> search t (v:e) k
-         (ClosFix e f x t) -> search t (v:(C c):e) k  
+         (ClosFix e _ _ t) -> search t (v:(C c):e) k  
         
 eval :: MonadPCF m => Term -> m Term
 eval t = do
     v <- search t [] []
+    return (vtot v)
+
+vtot :: Val -> Term
+vtot v =
+    case v of
+         N n -> Const NoPos (CNat n)
+         C c -> case c of
+                  ClosFun [] x t -> Lam NoPos x NatTy t
+                  ClosFun e  x t -> Lam NoPos x NatTy (rfv t e)
+                  ClosFix []  f x t -> Fix NoPos f NatTy x NatTy t
+                  ClosFix [v] f x t -> Fix NoPos f NatTy x NatTy t
+                  ClosFix e   f x t -> Fix NoPos f NatTy x NatTy (rfv t e)
+                                        
+-- Resignify Free Variables
+rfv :: Term -> Ent -> Term
+rfv t@(V _ (Bound 0)) e = t
+rfv t@(V _ (Bound n)) e = vtot (e !! (n-1))
+rfv (Lam i n ty t) e = Lam i n ty (rfv t e)
+rfv (App i t u) e = App i (rfv t e) (rfv u e)
+rfv (UnaryOp i o t) e = UnaryOp i o (rfv t e)
+rfv (Fix i f fty x xty t) e = Fix i f fty x xty (rfv t e)
+rfv (IfZ i c t u) e = IfZ i (rfv c e) (rfv t e) (rfv u e)
+rfv t _ = t
+
+{- Version debug
+
+vtot :: MonadPCF m => Val -> m Term
+vtot v =
     case v of
          N n -> return (Const NoPos (CNat n))
          C c -> case c of
-                  ClosFun _ x t -> return (Lam NoPos x NatTy t)
-                  ClosFix _ f x t -> return (Fix NoPos f NatTy x NatTy t)
+                  ClosFun [] x t -> return (Lam NoPos x NatTy t)
+                  ClosFun e  x t -> do  tt <- rfv t e
+                                        return (Lam NoPos x NatTy tt)
+                  ClosFix []  f x t -> return (Fix NoPos f NatTy x NatTy t)
+                  ClosFix [v] f x t -> return (Fix NoPos f NatTy x NatTy t)
+                  ClosFix e   f x t -> do   tt <- rfv t e
+                                            return (Fix NoPos f NatTy x NatTy tt)
+
+                                            
+rfv :: MonadPCF m => Term -> Ent -> m Term
+
+rfv t@(V _ (Bound 0)) e = do printPCF ("T " ++ show t )
+                           return t
+rfv t@(V _ (Bound n)) e = do printPCF ("T " ++ show t )
+                           vtot (e !! (n-1))
+rfv (Lam i n ty t) e = do printPCF ("T " ++ show t )
+                        tt <- rfv t e
+                        return (Lam i n ty tt)
+rfv (App i t u) e = do printPCF ("T " ++ show t )
+                     tt <- rfv t e
+                     tu <- rfv u e
+                     return (App i tt tu)
+rfv (UnaryOp i o t) e = do printPCF ("T " ++ show t )
+                         tt <- rfv t e
+                         return (UnaryOp i o tt)
+rfv (Fix i f fty x xty t) e = do printPCF ("T " ++ show t )
+                               tt <- rfv t e
+                               return (Fix i f fty x xty tt)
+rfv (IfZ i c t u) e = do printPCF ("T " ++ show t )
+                       tc <- rfv c e
+                       tt <- rfv t e
+                       tu <- rfv u e
+                       return (IfZ i tc tt tu)
+rfv t _ = return t
+
+-}

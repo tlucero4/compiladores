@@ -1,0 +1,58 @@
+-S-
+App (1,2) (App (1,2) (V (1,7) (Free "pair")) (Const (1,9) (CNat 4))) (Const (1,10) (CNat 6)) [] []
+
+-S-
+(App (1,2) (V (1,7) (Free "pair")) (Const (1,9) (CNat 4))) [] []
+
+-S-
+(V (1,7) (Free "pair")) [] [{KArg [] (Const (1,9) (CNat 4))} {KArg [] (Const (1,10) (CNat 6))}]
+
+-S-
+Lam "a" NatTy (Lam (12,1) "b" NatTy (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1)))))
+[]
+[{KArg [] (Const (1,9) (CNat 4))} {KArg [] (Const (1,10) (CNat 6))}]
+
+-D-
+C (ClosFun [] "a" (Lam (12,1) "b" NatTy (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1))))))
+[{KArg [] (Const (1,9) (CNat 4))} {KArg [] (Const (1,10) (CNat 6))}]
+
+-S-
+(Const (1,9) (CNat 4))
+[]
+[{KClos (ClosFun [] "a" (Lam (12,1) "b" NatTy (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1))))))} {KArg [] (Const (1,10) (CNat 6))}]
+
+-D-
+N 4
+[{KClos (ClosFun [] "a" (Lam (12,1) "b" NatTy (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1))))))} {KArg [] (Const (1,10) (CNat 6))}]
+
+-S-
+(Lam (12,1) "b" NatTy (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1)))))
+[{N 4}]
+[{KArg [] (Const (1,10) (CNat 6))}]
+
+-D-
+C (ClosFun [{N 4}] "b" (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1)))))
+[{KArg [] (Const (1,10) (CNat 6))}]
+
+-S-
+(Const (1,10) (CNat 6))
+[{N 4}]
+[{KClos (ClosFun [{N 4}] "b" (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1)))))}]
+
+-D-
+(N 6)
+[{KClos (ClosFun [{N 4}] "b" (Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1)))))}]
+
+-S-
+(Lam (12,1) "c" (NamedTy "Bool" NatTy) (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1))))
+[{N 6} {N 4}]
+[]
+
+-D-
+C (ClosFun [{N 6} {N 4}] "c" (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1))))
+[]
+
+-> 
+
+
+C (ClosFun [{N 6} {N 4}] "c" (App (12,51) (App (12,51) (App (12,51) (V (12,62) (Free "ifthenelse")) (V (12,64) (Bound 0))) (V (12,66) (Bound 2))) (V (13,1) (Bound 1))))
