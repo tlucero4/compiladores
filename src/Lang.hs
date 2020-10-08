@@ -25,7 +25,14 @@ data Ty =
       NatTy 
     | FunTy Ty Ty
     | NamedTy Name Ty
-    deriving (Show,Eq)
+    deriving (Show)
+    
+instance Eq Ty where
+   (==) NatTy NatTy = True
+   (==) (FunTy a b) (FunTy c d) = (a == c) && (b == d)
+   (==) (NamedTy n t) u = (t == u)
+   (==) t (NamedTy n u) = (t == u)
+   (==) _ _ = False
     
 -- | AST Azucarado de Tipos
 data STy = 
