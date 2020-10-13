@@ -4,6 +4,7 @@ import Lang
 import Global ( GlEnv(..) )
 import MonadPCF
 import PPrint
+import Subst ( substN )
 import Common ( Pos(NoPos) )
 
 type Ent = [Val]
@@ -21,20 +22,19 @@ type Kont = [Fr]
 data Clos = 
       ClosFun Ent Name Ty Term
     | ClosFix Ent Name Ty Name Ty Term
-{-
+--{-
 instance Show Clos where
-   show (ClosFun e x t) = "Fun (Ent "++show e++")"++show x++" -> "++show t
-   show (ClosFix e f x t) = "Fix (Ent "++show e++")"++show f++" "++show x++" -> "++show t
-   -}
+   show (ClosFun e x ty t) = "Fun (Ent "++show e++")"++show x++show ty++" -> "++show t
+   show (ClosFix e f fty x xty t) = "Fix (Ent "++show e++")"++show f++show fty++" "++show x++show xty++" -> "++show t
+--   -}
 -- | AST de Valores
 data Val = 
       N Int 
     | C Clos
-{-
+--{-
 instance Show Val where
    show (N n) = "( VNat "++show n++")"
    show (C c) = "( VClo "++show c++")"
-   -}
 {-
 
 Que hacer con los indices?
@@ -87,9 +87,11 @@ vtot v =
          N n -> Const NoPos (CNat n)
          C c -> case c of
                   ClosFun [] x xty t -> Lam NoPos x xty t
-                  ClosFun e  x xty t -> Lam NoPos x xty (rfv t e 0)
+                  ClosFun e  x xty t -> substN (map vtot e) (Lam NoPos x xty t)
+--                  ClosFun e  x xty t -> Lam NoPos x xty (rfv t e)
                   ClosFix []  f fty x xty t -> Fix NoPos f fty x xty t
-                  ClosFix e   f fty x xty t -> Fix NoPos f fty x xty (rfv t e 0)
+                  ClosFix e   f fty x xty t -> substN (map vtot e) (Fix NoPos f fty x xty t)
+--                  ClosFix e   f fty x xty t -> Fix NoPos f fty x xty (rfv t e)
 
 -- Resignify Free Variables
 rfv :: Term -> Ent -> Int -> Term
@@ -102,7 +104,6 @@ rfv (Fix i f fty x xty t) e k = Fix i f fty x xty (rfv t e (k+2))
 rfv (IfZ i c t u) e k = IfZ i (rfv c e k) (rfv t e k) (rfv u e k)
 rfv t _ _ = t
 ---}
-
 
 {- Version debug
 
