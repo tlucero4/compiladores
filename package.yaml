@@ -27,7 +27,6 @@ dependencies:
 - mtl
 - exceptions
 
-
 library:
   source-dirs: src
 
@@ -46,6 +45,9 @@ executables:
     - -fwarn-incomplete-patterns
     dependencies:
     - compiladores
+    - optparse-applicative
+    - binary
+    - bytestring
 
 tests:
   compiladores-test:

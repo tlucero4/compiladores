@@ -10,7 +10,7 @@ Este módulo permite elaborar términos y declaraciones para convertirlas desde
 fully named (@NTerm) a locally closed (@Term@) 
 -}
 
-module Elab ( elab, elab_sdecl, desugar, desugarTy ) where
+module Elab ( elab, elab_sdecl, desugar, desugarTy, bc_elab_sdecl ) where
 
 import Lang
 import Common ( Pos )
@@ -88,7 +88,9 @@ desugar (SLet p _ _   [] True _ _)  = failPosPCF p $ "La función recursiva debe
 desugar (SLet p n nty [] False d a) = do dd <- desugar d
                                          da <- desugar a
                                          dnty <- desugarTy nty
-                                         return (App p (Lam p n dnty da) dd)
+                                         -- return (App p (Lam p n dnty da) dd)
+                                         -- el unico cambio para bytecode sería:
+                                         return (Let p n dnty dd da)
 desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)
 
@@ -107,3 +109,10 @@ elab_sdecl (SDecl p n nty (v:vs) True st) = elab_sdecl (SDecl p n (buildFunType 
 elab_sdecl (SDecl p n nty vs _ st)    = do  dty <- desugarTy (buildFunType vs nty)
                                             dl <- elab (SLam p vs st)
                                             return (TDecl p n dty dl)
+
+bc_elab_sdecl :: MonadPCF m => [SDecl STerm] -> m ([TDecl Term])
+bc_elab_sdecl [] = return ([])
+bc_elab_sdecl (x:xs) = do
+        t <- elab_sdecl x
+        ts <- bc_elab_sdecl xs
+        return (t:ts)

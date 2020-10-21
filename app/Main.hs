@@ -14,6 +14,7 @@ module Main where
 
 import System.Console.Haskeline ( defaultSettings, getInputLine, runInputT, InputT )
 import Control.Monad.Catch (MonadMask)
+import Options.Applicative
 
 --import Control.Monad
 import Control.Monad.Trans
@@ -28,19 +29,96 @@ import Errors
 import Lang
 --import Parse ( P, tm, program, declOrTm, runP )
 import Parse ( P, stm, sdecl, sprogram, sdeclOrSTm, runP )
-import Elab ( elab, elab_sdecl, desugar, desugarTy )
+import Elab ( elab, elab_sdecl, desugar, desugarTy, bc_elab_sdecl )
 import CEK ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
 import TypeChecker ( tc, tcDecl )
+import Bytecompile
 
 prompt :: String
 prompt = "PCF> "
 
+----------------- SECCION BYTECODE
+
+data Mode =   Interactive
+            | Typecheck
+            | Bytecompile
+            | Run
+
+-- | Parser de banderas
+parseMode :: Parser Mode
+parseMode = flag' Typecheck ( long "typecheck" <> short 't' <> help "Solo chequear tipos")
+        <|> flag' Bytecompile (long "bytecompile" <> short 'c' <> help "Compilar a la BVM")
+        <|> flag' Run (long "run" <> short 'r' <> help "Ejecutar bytecode en la BVM")
+        <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva" )
+
+-- | Parser de opciones general, consiste de un modo y una lista de archivos a procesar
+parseArgs :: Parser (Mode,[FilePath])
+parseArgs = (,) <$> parseMode <*> many (argument str (metavar "FILES..."))
+
+main :: IO ()
+main = execParser opts >>= go
+    where opts = info (parseArgs <**> helper)
+            ( fullDesc
+            <> progDesc "Compilador de PCF"
+            <> header "Compilador de PCF de la materia Compiladores 2020" )
+    
+go :: (Mode,[FilePath]) -> IO ()
+go (Interactive,files) = do
+    runPCF (runInputT defaultSettings (main' files))
+    return ()
+go (Typecheck, files) = undefined
+go (Bytecompile, files) = do
+    runPCF (bytecompileFiles files)
+    return ()
+go (Run,files) = do
+    runPCF (byterunFiles files)
+    return ()
+
+bytecompileFiles :: MonadPCF m => [String] -> m ()
+bytecompileFiles []     = return ()
+bytecompileFiles (x:xs) = do
+        modify (\s -> s { lfile = x, inter = False })
+        bytecompileFile x
+        bytecompileFiles xs
+
+bytecompileFile ::  MonadPCF m => String -> m ()
+bytecompileFile f = do
+    printPCF ("Abriendo "++f++"...")
+    let filename = reverse(dropWhile isSpace (reverse f))
+    x <- liftIO $ catch (readFile filename)
+               (\e -> do let err = show (e :: IOException)
+                         hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
+                         return "")
+    printPCF(show x)
+    sdecls <- parseIO filename sprogram x -- por lo pronto asumimos que no hay declaraciones de tipos
+    printPCF("1")
+    decls <- bc_elab_sdecl sdecls -- en este punto tenemos que hacer un desugaring a cada declaracion de la lista
+    printPCF("2")
+    let bigterm = prog2term decls -- una vez hecho esto, convertimos toda la lista de declaraciones internas en un gran termino
+    printPCF (show bigterm)
+    bytecode <- bc bigterm -- transformamos el termino en un bytecode
+    printPCF ("3")
+    printPCF (show bytecode)
+    liftIO $ bcWrite (bytecode++[14,10]) (f++".byte") -- escribimos el archivo
+    
+byterunFiles :: MonadPCF m => [String] -> m ()
+byterunFiles [] = return ()
+byterunFiles (x:xs) = do
+        modify (\s -> s { lfile = x, inter = False })
+        bytecode <- liftIO $ bcRead x
+        runBC bytecode
+        byterunFiles xs
+
+----------------- FIN SECCION BYTECODE
+        
+{-
 main :: IO ()
 main = do args <- getArgs
           runPCF (runInputT defaultSettings (main' args))
           return ()
+          -}
           
 main' :: (MonadPCF m, MonadMask m) => [String] -> InputT m ()
 main' args = do
@@ -59,7 +137,7 @@ main' args = do
                        c <- liftIO $ interpretCommand x
                        b <- lift $ catchErrors $ handleCommand c
                        maybe loop (flip when loop) b
- 
+                       
 compileFiles ::  MonadPCF m => [String] -> m ()
 compileFiles []     = return ()
 compileFiles (x:xs) = do
