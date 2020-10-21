@@ -57,13 +57,7 @@ tc (Fix p f fty x xty t) bs = do
          ty' <- tc t' ((x,xty):(f,fty):bs)
          expect cod ty' t
          return fty
-{-
--- | "ut" (unname type) elimina los sinonimos de tipos y devuelve el tipo real
-ut :: Ty -> Ty
-ut (NatTy)       = NatTy
-ut (FunTy t u)   = FunTy (ut t) (ut u)
-ut (NamedTy n t) = ut t
--}        
+       
 -- | @'typeError' t s@ lanza un error de tipo para el término @t@ 
 typeError :: MonadPCF m => Term   -- ^ término que se está chequeando  
                         -> String -- ^ mensaje de error

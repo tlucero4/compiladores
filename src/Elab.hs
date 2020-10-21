@@ -111,7 +111,13 @@ elab_sdecl (SDecl p n nty vs _ st)    = do  dty <- desugarTy (buildFunType vs nt
                                             return (TDecl p n dty dl)
 
 bc_elab_sdecl :: MonadPCF m => [SDecl STerm] -> m ([TDecl Term])
-bc_elab_sdecl [] = return ([])
+bc_elab_sdecl [] = return []
+bc_elab_sdecl ((SType p n t):xs) = do   ns <- lookupNTy n
+                                        case ns of
+                                                Just _  -> failPosPCF p $ "El tipo "++n++" ya existe."
+                                                Nothing -> do   dt <- desugarTy t
+                                                                addNTy n dt
+                                                                bc_elab_sdecl xs
 bc_elab_sdecl (x:xs) = do
         t <- elab_sdecl x
         ts <- bc_elab_sdecl xs

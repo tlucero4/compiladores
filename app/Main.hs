@@ -93,15 +93,15 @@ bytecompileFile f jtc = do
                (\e -> do let err = show (e :: IOException)
                          hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
                          return "")
-    sdecls <- parseIO filename sprogram x -- por lo pronto asumimos que no hay declaraciones de tipos
-    decls <- bc_elab_sdecl sdecls -- en este punto tenemos que hacer un desugaring a cada declaracion de la lista
+    sdecls <- parseIO filename sprogram x
+    decls <- bc_elab_sdecl sdecls -- hacemos un desugaring a cada declaracion de la lista
     mapM_ tcDecl decls
-    when jtc $ do -- just type check
-        printPCF ("Las declaraciones de "++f++" están bien tipadas.")
-        return ()
-    bytecode <- bytecompileModule decls -- transformamos la lista en un bytecode
-    liftIO $ bcWrite bytecode (f++".byte") -- escribimos el archivo
-    printPCF ("Archivo "++f++".byte creado.\n")
+    if jtc then do
+            printPCF ("Las declaraciones de "++f++" están bien tipadas.")
+           else do
+            bytecode <- bytecompileModule decls -- transformamos la lista en un bytecode
+            liftIO $ bcWrite bytecode (f++".byte") -- escribimos el archivo
+            printPCF ("Archivo "++f++".byte creado.\n")
     
 byterunFiles :: (MonadPCF m, MonadMask m) => [String] -> m ()
 byterunFiles [] = return ()
