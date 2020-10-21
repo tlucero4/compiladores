@@ -70,7 +70,7 @@ pattern CALL     = 5
 pattern SUCC     = 6
 pattern PRED     = 7
 pattern IFZ      = 8
-pattern FIXPOINT      = 9 -- Por ahora en vez de FIX usamos FIXPOINT
+pattern FIX      = 9
 pattern STOP     = 10
 pattern JUMP     = 11
 pattern SHIFT    = 12
@@ -98,7 +98,7 @@ bc (Lam _ v vty t) = do -- v no se usa
 bc (Fix _ f fty v vty t) = do -- f y v no se usan
     bt <- bc t
     let size = length bt
-    return ([FIXPOINT, size+1]++bt++[RETURN]) -- Por ahora en vez de FUNCTION usamos FIXPOINT
+    return ([FUNCTION, size+1]++bt++[RETURN,FIX]) -- Por ahora en vez de FUNCTION usamos FIXPOINT
 bc (IfZ _ d t e) = do
     bd <- bc d
     bt <- bc t
@@ -110,10 +110,6 @@ bc (Let _ _ _ t1 t2) = do
     bt2 <- bc t2
     return (bt1++[SHIFT]++bt2++[DROP])
 
-
-    
-
-    
 bytecompileModule :: MonadPCF m => [TDecl Term] -> m Bytecode
 bytecompileModule decls = do
     term <- prog2term decls
@@ -158,10 +154,9 @@ runBC' (ACCESS : i : cs) e ss = runBC' cs e (e!!i : ss)
 runBC' (CALL : cs) e (v : (Fun ef cf) : ss) = runBC' cf (v : ef) ((RA e cs) : ss)
 runBC' (FUNCTION : l : cs) e ss = runBC' (drop l cs) e ((Fun e cs) : ss)
 runBC' (RETURN : _) _ (v : (RA e cs) : ss) = runBC' cs e (v : ss)
-runBC' (FIXPOINT : l : cs) e ss = do
-    let efix = ((Fun efix cs) : e)
-    runBC' (drop l cs) e ((Fun efix cs) : ss)
---runBC' (FIX : _) _ s@((Fun ef cf) : _) = runBC' cf ef s
+runBC' (FIX : cs) e ((Fun ef cf) : ss) = do
+    let efix = ((Fun efix cf) : e)
+    runBC' cs e ((Fun efix cf) : ss)
 runBC' (SHIFT : cs) e (v : ss) = runBC' cs (v : e) ss
 runBC' (DROP : cs) (v : e) s = runBC' cs e s
 runBC' (IFZ : l : cs) e (I 0 : ss) = runBC' cs e ss
