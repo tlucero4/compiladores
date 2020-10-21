@@ -68,57 +68,51 @@ go :: (Mode,[FilePath]) -> IO ()
 go (Interactive,files) = do
     runPCF (runInputT defaultSettings (main' files))
     return ()
-go (Typecheck, files) = undefined
+go (Typecheck, files) = do
+    runPCF (bytecompileFiles files True)
+    return ()
 go (Bytecompile, files) = do
-    runPCF (bytecompileFiles files)
+    runPCF (bytecompileFiles files False)
     return ()
 go (Run,files) = do
     runPCF (byterunFiles files)
     return ()
 
-bytecompileFiles :: MonadPCF m => [String] -> m ()
-bytecompileFiles []     = return ()
-bytecompileFiles (x:xs) = do
+bytecompileFiles :: (MonadPCF m, MonadMask m) => [String] -> Bool -> m ()
+bytecompileFiles [] _       = return ()
+bytecompileFiles (x:xs) jtc = do
         modify (\s -> s { lfile = x, inter = False })
-        bytecompileFile x
-        bytecompileFiles xs
+        catchErrors $ bytecompileFile x jtc
+        bytecompileFiles xs jtc
 
-bytecompileFile ::  MonadPCF m => String -> m ()
-bytecompileFile f = do
+bytecompileFile ::  (MonadPCF m, MonadMask m) => String -> Bool -> m ()
+bytecompileFile f jtc = do
     printPCF ("Abriendo "++f++"...")
     let filename = reverse(dropWhile isSpace (reverse f))
     x <- liftIO $ catch (readFile filename)
                (\e -> do let err = show (e :: IOException)
                          hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
                          return "")
-    printPCF(show x)
     sdecls <- parseIO filename sprogram x -- por lo pronto asumimos que no hay declaraciones de tipos
-    printPCF("1")
     decls <- bc_elab_sdecl sdecls -- en este punto tenemos que hacer un desugaring a cada declaracion de la lista
-    printPCF("2")
-    let bigterm = prog2term decls -- una vez hecho esto, convertimos toda la lista de declaraciones internas en un gran termino
-    printPCF (show bigterm)
-    bytecode <- bc bigterm -- transformamos el termino en un bytecode
-    printPCF ("3")
-    printPCF (show bytecode)
-    liftIO $ bcWrite (bytecode++[14,10]) (f++".byte") -- escribimos el archivo
+    mapM_ tcDecl decls
+    when jtc $ do -- just type check
+        printPCF ("Las declaraciones de "++f++" están bien tipadas.")
+        return ()
+    bytecode <- bytecompileModule decls -- transformamos la lista en un bytecode
+    liftIO $ bcWrite bytecode (f++".byte") -- escribimos el archivo
+    printPCF ("Archivo "++f++".byte creado.\n")
     
-byterunFiles :: MonadPCF m => [String] -> m ()
+byterunFiles :: (MonadPCF m, MonadMask m) => [String] -> m ()
 byterunFiles [] = return ()
 byterunFiles (x:xs) = do
+        printPCF ("Ejectutando "++x++"...")
         modify (\s -> s { lfile = x, inter = False })
         bytecode <- liftIO $ bcRead x
-        runBC bytecode
+        catchErrors $ runBC bytecode
         byterunFiles xs
 
 ----------------- FIN SECCION BYTECODE
-        
-{-
-main :: IO ()
-main = do args <- getArgs
-          runPCF (runInputT defaultSettings (main' args))
-          return ()
-          -}
           
 main' :: (MonadPCF m, MonadMask m) => [String] -> InputT m ()
 main' args = do

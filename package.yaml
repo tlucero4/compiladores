@@ -26,6 +26,8 @@ dependencies:
 - pretty
 - mtl
 - exceptions
+- binary
+- bytestring
 
 library:
   source-dirs: src

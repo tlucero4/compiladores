@@ -10,7 +10,7 @@ Este módulo permite compilar módulos a la BVM. También provee una implementac
 para ejecutar bytecode.
 -}
 module Bytecompile
-(Bytecode, {-bytecompileModule,-}bc, runBC, bcWrite, bcRead )
+(Bytecode, bytecompileModule, runBC, bcWrite, bcRead )
  where
 
 import Lang 
@@ -79,7 +79,7 @@ pattern PRINT    = 14
 
 bc :: MonadPCF m => Term -> m Bytecode
 bc (V _ (Bound i)) = return ([ACCESS, i])
-bc (V p (Free n)) = return ([ACCESS, 0])
+bc (V _ (Free _)) = failPCF $ "Error de compilación: No debería haber variables libres."
 bc (Const _ (CNat n)) = return([CONST, n])
 bc (UnaryOp _ Succ t) = do
     bt <- bc t
@@ -104,15 +104,28 @@ bc (IfZ _ d t e) = do
     bt <- bc t
     be <- bc e
     let (st, se) = (length bt, length be)
-    return (bd++[IFZ, st+2]++bt++[JUMP, se]++be) -- ???
-bc (Let _ n nty t1 t2) = do
+    return (bd++[IFZ, st+2]++bt++[JUMP, se]++be)
+bc (Let _ _ _ t1 t2) = do
     bt1 <- bc t1
     bt2 <- bc t2
     return (bt1++[SHIFT]++bt2++[DROP])
 
 
---bytecompileModule :: MonadPCF m => Module -> m Bytecode
---bytecompileModule mod = error "implementame"
+    
+
+    
+bytecompileModule :: MonadPCF m => [TDecl Term] -> m Bytecode
+bytecompileModule decls = do
+    term <- prog2term decls
+    bytecode <- bc term
+    return (bytecode++[PRINT,STOP])
+
+prog2term :: MonadPCF m => [TDecl Term] -> m Term
+prog2term [] = failPCF $ "Programa vacío"
+prog2term [(TDecl _ _ _ t)] = return t
+prog2term ((TDecl p n nty t):xs) = do
+    txs <- prog2term xs
+    return (Let p n nty t (close n txs))
 
 -- | Toma un bytecode, lo codifica y lo escribe un archivo 
 bcWrite :: Bytecode -> FilePath -> IO ()
@@ -130,13 +143,13 @@ runBC :: MonadPCF m => Bytecode -> m ()
 runBC c = runBC' c [] []
 
 runBC' :: MonadPCF m => Bytecode -> Env -> Stack -> m ()
-runBC' [] _ _ = failPCF $ "Error de compilación: No hay instrucciones."
+runBC' [] _ _ = failPCF $ "Error de ejecución: No hay instrucciones."
 runBC' (PRINT : cs) e s@(I n : _) = do
     printPCF ("El resultado es "++(show n))
     runBC' cs e s
-runBC' (PRINT : _) _ _ = failPCF $ "Error de compilación: Solo se pueden imprimir naturales."
+runBC' (PRINT : _) _ _ = failPCF $ "Error de ejecución: Solo se pueden imprimir naturales."
 runBC' (STOP : _) _ _ = do
-    printPCF "El programa ha finalizado."
+    printPCF "El programa ha finalizado.\n"
     return ()
 runBC' (CONST : n : cs) e s = runBC' cs e (I n : s)
 runBC' (SUCC : cs) e (I n : ss) = runBC' cs e (I (n+1) : ss)

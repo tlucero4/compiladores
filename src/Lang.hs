@@ -118,8 +118,3 @@ freeVars (UnaryOp _ _ t)   = freeVars t
 freeVars (Fix _ _ _ _ _ t) = freeVars t
 freeVars (IfZ _ c t e)     = freeVars c ++ freeVars t ++ freeVars e
 freeVars (Const _ _)       = []
-
-prog2term :: [TDecl Term] -> Term
-prog2term [] = error "Programa vacío"
-prog2term [(TDecl p n nty t)] = t -- o Let p n nty t (V p (Free n))
-prog2term ((TDecl p n nty t):xs) = Let p n nty t (prog2term xs)
