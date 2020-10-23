@@ -26,7 +26,6 @@ elab' (Lam p v ty t)        = Lam p v ty (close v (elab' t))
 elab' (App p h a)           = App p (elab' h) (elab' a)
 elab' (Fix p f fty x xty t) = Fix p f fty x xty (closeN [f, x] (elab' t))
 elab' (IfZ p c t e)         = IfZ p (elab' c) (elab' t) (elab' e)
-elab' (UnaryOp p o t)       = UnaryOp p o (elab' t)
 elab' (BinaryOp p o t1 t2)  = BinaryOp p o (elab' t1) (elab' t2)
 
 ---elab_decl :: Decl NTerm -> Decl Term
@@ -67,13 +66,9 @@ desugar (SV p v)               = return (V p v)
 desugar (SConst p c)           = return (Const p c)
 desugar (SLam p [] t)          = failPosPCF p $ "La función debe tener un argumento"
 desugar (SLam p l t)           = sLam p l t
-desugar (SApp p h a)           = 
-    case h of
-         SUnaryOp p o -> do da <- desugar a
-                            return (UnaryOp p o da)
-         _            -> do dh <- desugar h
-                            da <- desugar a
-                            return (App p dh da)
+desugar (SApp p h a)           =  do dh <- desugar h
+                                     da <- desugar a
+                                     return (App p dh da)
 -- Fix deberia tener una lista de variables con sus tipos? En la teoria no se usa nunca
 desugar (SFix p f fty n nty t) = do dfty <- desugarTy fty
                                     dnty <- desugarTy nty
@@ -83,7 +78,8 @@ desugar (SIfZ p c t e)         = do dc <- desugar c
                                     dt <- desugar t
                                     de <- desugar e
                                     return (IfZ p dc dt de)
-desugar (SUnaryOp p o)         = return (Lam p "x" NatTy (UnaryOp p o (V p "x")))
+desugar (SUnaryOp p Succ)         = return (Lam p "x" NatTy (BinaryOp p Sum (V p "x") (Const p (CNat 1))))
+desugar (SUnaryOp p Pred)         = return (Lam p "x" NatTy (BinaryOp p Sub (V p "x") (Const p (CNat 1))))
 desugar (SBinaryOp p o)         = return (Lam p "x" NatTy (Lam p "y" NatTy (BinaryOp p o (V p "x") (V p "y"))))
 desugar (SLet p _ _   [] True _ _)  = failPosPCF p $ "La función recursiva debe tener un argumento"
 desugar (SLet p n nty [] False d a) = do dd <- desugar d

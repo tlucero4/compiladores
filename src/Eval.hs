@@ -37,16 +37,8 @@ eval (App p l r) = do
         _ ->
            abort("Error de tipo en runtime " ++ show (le, re))
 
-eval (UnaryOp p Succ t) = do
-        te <- eval t
-        case te of
-          Const _ (CNat n) -> return (Const p (CNat (n+1)))
-          _                -> abort ("Error de tipo en runtime!")
-eval (UnaryOp p Pred t) = do
-        te <- eval t
-        case te of
-          Const _ (CNat n) -> return (Const p (CNat (max 0 (n-1))))
-          _                -> abort ("Error de tipo en runtime!")
+eval (BinaryOp p _ _ _) = abort("Error de tipo en runtime: Eval no implementa operaciones binarias")
+          
 eval (IfZ p c t e) = do
      ce <- eval c
      case ce of

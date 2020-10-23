@@ -50,7 +50,6 @@ openAll (Fix p f fty x xty t) =
     let ([f', x'], t') = openRename [f, x] t in
     Fix p f' fty x' xty (openAll t')
 openAll (IfZ p c t e) = IfZ p (openAll c) (openAll t) (openAll e)
-openAll (UnaryOp i o t) = UnaryOp i o (openAll t)
 openAll (BinaryOp i o t1 t2) = BinaryOp i o (openAll t1) (openAll t2)
 
 -- | Pretty printer de nombres (Doc)
@@ -74,10 +73,6 @@ ppTy = render . ty2doc
 
 c2doc :: Const -> Doc
 c2doc (CNat n) = text (show n)
-
-unary2doc :: UnaryOp -> Doc
-unary2doc Succ = text "succ"
-unary2doc Pred = text "pred"
 
 binary2doc :: BinaryOp -> Doc
 binary2doc Sum = text "sum"
@@ -123,10 +118,6 @@ t2doc at (IfZ _ c t e) =
       , text "then", nest 2 (t2doc False t)
       , text "else", nest 2 (t2doc False e) ]
 
-t2doc at (UnaryOp _ o t) =
-  parenIf at $
-  unary2doc o <+> t2doc True t
-  
 t2doc at (BinaryOp _ o t1 t2) =
   parenIf at $
   binary2doc o <+> t2doc True t1 <+> t2doc True t2

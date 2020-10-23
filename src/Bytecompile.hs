@@ -67,8 +67,8 @@ pattern CONST    = 2
 pattern ACCESS   = 3
 pattern FUNCTION = 4
 pattern CALL     = 5
-pattern SUCC     = 6
-pattern PRED     = 7
+pattern SUM      = 6
+pattern SUB      = 7
 pattern IFZ      = 8
 pattern FIX      = 9
 pattern STOP     = 10
@@ -76,19 +76,11 @@ pattern JUMP     = 11
 pattern SHIFT    = 12
 pattern DROP     = 13
 pattern PRINT    = 14
-pattern SUM      = 15
-pattern SUB      = 16
 
 bc :: MonadPCF m => Term -> m Bytecode
 bc (V _ (Bound i)) = return ([ACCESS, i])
 bc (V _ (Free _)) = failPCF $ "Error de compilación: No debería haber variables libres."
 bc (Const _ (CNat n)) = return([CONST, n])
-bc (UnaryOp _ Succ t) = do
-    bt <- bc t
-    return (bt++[SUCC])
-bc (UnaryOp _ Pred t) = do
-    bt <- bc t
-    return (bt++[PRED])
 bc (BinaryOp _ Sum t1 t2) = do
     bt1 <- bc t1
     bt2 <- bc t2
@@ -158,11 +150,8 @@ runBC' (STOP : _) _ _ = do
     printPCF "El programa ha finalizado.\n"
     return ()
 runBC' (CONST : n : cs) e s = runBC' cs e (I n : s)
-runBC' (SUCC : cs) e (I n : ss) = runBC' cs e (I (n+1) : ss)
-runBC' (PRED : cs) e (I 0 : ss) = runBC' cs e (I 0 : ss)
-runBC' (PRED : cs) e (I n : ss) = runBC' cs e (I (n-1) : ss)
-runBC' (SUM : cs) e (I n1 : I n2 : ss) = runBC' cs e (I (n1+n2) : ss)
-runBC' (SUB : cs) e (I n1 : I n2 : ss) = if (n1 > n2) then runBC' cs e (I (n1-n2) : ss)
+runBC' (SUM : cs) e (I n2 : I n1 : ss) = runBC' cs e (I (n1+n2) : ss)
+runBC' (SUB : cs) e (I n2 : I n1 : ss) = if (n1 > n2) then runBC' cs e (I (n1-n2) : ss)
                                                       else runBC' cs e (I 0 : ss)
 runBC' (ACCESS : i : cs) e ss = runBC' cs e (e!!i : ss)
 runBC' (CALL : cs) e (v : (Fun ef cf) : ss) = runBC' cf (v : ef) ((RA e cs) : ss)
