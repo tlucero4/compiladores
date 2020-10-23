@@ -27,6 +27,7 @@ elab' (App p h a)           = App p (elab' h) (elab' a)
 elab' (Fix p f fty x xty t) = Fix p f fty x xty (closeN [f, x] (elab' t))
 elab' (IfZ p c t e)         = IfZ p (elab' c) (elab' t) (elab' e)
 elab' (UnaryOp p o t)       = UnaryOp p o (elab' t)
+elab' (BinaryOp p o t1 t2)  = BinaryOp p o (elab' t1) (elab' t2)
 
 ---elab_decl :: Decl NTerm -> Decl Term
 ---elab_decl = fmap elab
@@ -83,13 +84,13 @@ desugar (SIfZ p c t e)         = do dc <- desugar c
                                     de <- desugar e
                                     return (IfZ p dc dt de)
 desugar (SUnaryOp p o)         = return (Lam p "x" NatTy (UnaryOp p o (V p "x")))
-
+desugar (SBinaryOp p o)         = return (Lam p "x" NatTy (Lam p "y" NatTy (BinaryOp p o (V p "x") (V p "y"))))
 desugar (SLet p _ _   [] True _ _)  = failPosPCF p $ "La función recursiva debe tener un argumento"
 desugar (SLet p n nty [] False d a) = do dd <- desugar d
                                          da <- desugar a
                                          dnty <- desugarTy nty
                                          -- return (App p (Lam p n dnty da) dd)
-                                         -- el unico cambio para bytecode sería:
+                                         -- el unico cambio para bytecode sería este (hay que resolverlo):
                                          return (Let p n dnty dd da)
 desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)

@@ -76,6 +76,8 @@ pattern JUMP     = 11
 pattern SHIFT    = 12
 pattern DROP     = 13
 pattern PRINT    = 14
+pattern SUM      = 15
+pattern SUB      = 16
 
 bc :: MonadPCF m => Term -> m Bytecode
 bc (V _ (Bound i)) = return ([ACCESS, i])
@@ -87,6 +89,14 @@ bc (UnaryOp _ Succ t) = do
 bc (UnaryOp _ Pred t) = do
     bt <- bc t
     return (bt++[PRED])
+bc (BinaryOp _ Sum t1 t2) = do
+    bt1 <- bc t1
+    bt2 <- bc t2
+    return (bt1++bt2++[SUM])
+bc (BinaryOp _ Sub t1 t2) = do
+    bt1 <- bc t1
+    bt2 <- bc t2
+    return (bt1++bt2++[SUB])
 bc (App _ f a) = do
     bf <- bc f
     ba <- bc a
@@ -149,7 +159,11 @@ runBC' (STOP : _) _ _ = do
     return ()
 runBC' (CONST : n : cs) e s = runBC' cs e (I n : s)
 runBC' (SUCC : cs) e (I n : ss) = runBC' cs e (I (n+1) : ss)
+runBC' (PRED : cs) e (I 0 : ss) = runBC' cs e (I 0 : ss)
 runBC' (PRED : cs) e (I n : ss) = runBC' cs e (I (n-1) : ss)
+runBC' (SUM : cs) e (I n1 : I n2 : ss) = runBC' cs e (I (n1+n2) : ss)
+runBC' (SUB : cs) e (I n1 : I n2 : ss) = if (n1 > n2) then runBC' cs e (I (n1-n2) : ss)
+                                                      else runBC' cs e (I 0 : ss)
 runBC' (ACCESS : i : cs) e ss = runBC' cs e (e!!i : ss)
 runBC' (CALL : cs) e (v : (Fun ef cf) : ss) = runBC' cf (v : ef) ((RA e cs) : ss)
 runBC' (FUNCTION : l : cs) e ss = runBC' (drop l cs) e ((Fun e cs) : ss)
@@ -162,6 +176,7 @@ runBC' (DROP : cs) (v : e) s = runBC' cs e s
 runBC' (IFZ : l : cs) e (I 0 : ss) = runBC' cs e ss
 runBC' (IFZ : l : cs) e (I _ : ss) = runBC' (drop l cs) e ss
 runBC' (JUMP : l : cs) e ss = runBC' (drop l cs) e ss
+runBC' _ _ _ = failPCF $ "Error de ejecución: Secuencia de instrucciones inválida."
 
 
 {- Version para debugear

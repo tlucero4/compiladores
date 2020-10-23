@@ -33,6 +33,11 @@ tc (Const _ (CNat n)) _ = return NatTy
 tc (UnaryOp p u t) bs = do 
       ty <- tc t bs
       expect NatTy ty t
+tc (BinaryOp p u t1 t2) bs = do 
+      ty1 <- tc t1 bs
+      ty2 <- tc t2 bs
+      expect NatTy ty1 t1
+      expect NatTy ty2 t2
 tc (IfZ p c t t') bs = do
        tyc  <- tc c bs
        expect NatTy tyc c
@@ -93,6 +98,7 @@ tcDecl (TDecl p n nty t) = do
                   s <- get
                   ty <- tc t (tyEnv s)
                   when (ty /= nty) $ do
-                    failPosPCF p "El tipo declarado no coincide con su cuerpo"
+                    failPosPCF p $ "El tipo declarado esperado es: "++ ppTy nty
+                                    ++"\npero el tipo del cuerpo es: "++ppTy ty
                   addTy n nty
         Just _  -> failPosPCF p $ n ++" ya está declarado"

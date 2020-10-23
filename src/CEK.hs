@@ -49,6 +49,7 @@ Las bound si o si tienen que encontrarse en el entorno que le vamos pasando, con
 search :: MonadPCF m => Term -> Ent -> Kont -> m Val
 search (UnaryOp _ Succ t) e k = search t e (KSucc:k)
 search (UnaryOp _ Pred t) e k = search t e (KPred:k)
+search (BinaryOp _ _ _ _) e k = failPCF $ "Error de ejecución: La maquina CEK aún no ejecuta operaciones binarias. "
 search (IfZ _ c t u) e k = search c e ((KIfZ e t u):k)
 search (App _ t u) e k = search t e ((KArg e u):k)
 search (V _ (Bound i)) e k = destroy (e !! i) k

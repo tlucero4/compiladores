@@ -30,7 +30,8 @@ lexer = Tok.makeTokenParser $
          commentLine    = "#",
          reservedNames = ["let", "fun", "fix", "then", "else",
                           "rec", "type", "in",
-                          "succ", "pred", "ifz", "Nat"],
+                          "succ", "pred", "ifz", "Nat",
+                          "sum", "sub"],
          reservedOpNames = ["->",":","="]
         }
 
@@ -210,6 +211,11 @@ unaryOpName =
       (reserved "succ" >> return Succ)
   <|> (reserved "pred" >> return Pred)
   
+binaryOpName :: P BinaryOp
+binaryOpName =
+      (reserved "sum" >> return Sum)
+  <|> (reserved "sub" >> return Sub)
+  
 tyvar :: P Name
 tyvar = Tok.lexeme lexer $ do
  c  <- upper
@@ -222,10 +228,17 @@ sunaryOp = do
              i <- getPos
              o <- unaryOpName
              return (SUnaryOp i o)
+             
+sbinaryOp :: P STerm
+sbinaryOp = do
+             i <- getPos
+             b <- binaryOpName
+             return (SBinaryOp i b)
 
 satom :: P STerm
 satom =     (flip SConst <$> const <*> getPos)
        <|> flip SV <$> var <*> getPos
+       <|> sbinaryOp
        <|> sunaryOp
        <|> parens stm
 
