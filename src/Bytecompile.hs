@@ -76,6 +76,26 @@ pattern JUMP     = 11
 pattern SHIFT    = 12
 pattern DROP     = 13
 pattern PRINT    = 14
+pattern TAILCALL = 15
+
+bct :: MonadPCF m => Term -> m Bytecode
+bct (App _ f a) = do
+    bf <- bc f
+    ba <- bc a
+    return (bf++ba++[TAILCALL])
+bct (IfZ _ d t e) = do
+    bd <- bc d
+    bt <- bc t
+    be <- bct e
+    let (st, se) = (length bt, length be)
+    return (bd++[IFZ, st+2]++bt++[JUMP, se]++be)
+bct (Let _ _ _ t1 t2) = do
+    bt1 <- bc t1
+    bt2 <- bct t2
+    return (bt1++[SHIFT]++bt2)
+bct t = do
+    bt <- bc t
+    return (bt++[RETURN])
 
 bc :: MonadPCF m => Term -> m Bytecode
 bc (V _ (Bound i)) = return ([ACCESS, i])
@@ -93,14 +113,14 @@ bc (App _ f a) = do
     bf <- bc f
     ba <- bc a
     return (bf++ba++[CALL])
-bc (Lam _ v vty t) = do -- v no se usa
+bc (Lam _ _ _ t) = do -- v no se usa
+    bt <- bct t
+    let size = length bt
+    return ([FUNCTION, size]++bt)
+bc (Fix _ _ _ _ _ t) = do -- f y v no se usan
     bt <- bc t
     let size = length bt
-    return ([FUNCTION, size+1]++bt++[RETURN])
-bc (Fix _ f fty v vty t) = do -- f y v no se usan
-    bt <- bc t
-    let size = length bt
-    return ([FUNCTION, size+1]++bt++[RETURN,FIX]) -- Por ahora en vez de FUNCTION usamos FIXPOINT
+    return ([FUNCTION, size+1]++bt++[RETURN,FIX])
 bc (IfZ _ d t e) = do
     bd <- bc d
     bt <- bc t
@@ -165,6 +185,7 @@ runBC' (DROP : cs) (v : e) s = runBC' cs e s
 runBC' (IFZ : l : cs) e (I 0 : ss) = runBC' cs e ss
 runBC' (IFZ : l : cs) e (I _ : ss) = runBC' (drop l cs) e ss
 runBC' (JUMP : l : cs) e ss = runBC' (drop l cs) e ss
+runBC' (TAILCALL : cs) e (v : Fun ef cf : ss) = runBC' cf (v : ef) ss
 runBC' _ _ _ = failPCF $ "Error de ejecución: Secuencia de instrucciones inválida."
 
 

@@ -55,6 +55,7 @@
 #define SHIFT    12
 #define DROP     13
 #define PRINT    14
+#define TAILCALL 15
 
 #define CHUNK 4096
 
@@ -274,7 +275,17 @@ void run(code init_c)
 
 			break;
 		}
-
+        
+        case TAILCALL: {
+			value arg = *--s;
+			value fun = *--s;
+            
+            e = env_push(fun.clo.clo_env, arg);
+            c = fun.clo.clo_body;
+            
+			break;
+		}
+		
 		case IFZ: {
             int offset = *c++;
             value v = *--s;

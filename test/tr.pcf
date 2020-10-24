@@ -1,0 +1,7 @@
+let rec mult' (m m' n : Nat) : Nat = ifz n then m else mult' (sum m m') m' (pred n)
+let mult (m n : Nat) : Nat = ifz n then 0 else mult' m m (pred n)
+let rec exp' (m m' n : Nat) : Nat = ifz n then m else exp' (mult m m') m' (pred n)
+let exp (m n : Nat) : Nat = ifz n then 1 else exp' m m (pred n)
+let rec fact' (n n' : Nat) : Nat = ifz n' then n else fact' (mult n n') (pred n')
+let fact (n : Nat) : Nat = fact' n (pred n)
+let _ : Nat = mult 0 100000000
