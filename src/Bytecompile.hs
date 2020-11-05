@@ -85,10 +85,10 @@ bct (App _ f a) = do
     return (bf++ba++[TAILCALL])
 bct (IfZ _ d t e) = do
     bd <- bc d
-    bt <- bc t
+    bt <- bct t
     be <- bct e
     let (st, se) = (length bt, length be)
-    return (bd++[IFZ, st+2]++bt++[JUMP, se]++be)
+    return (bd++[IFZ, st]++bt++be)
 bct (Let _ _ _ t1 t2) = do
     bt1 <- bc t1
     bt2 <- bct t2
@@ -118,9 +118,9 @@ bc (Lam _ _ _ t) = do -- v no se usa
     let size = length bt
     return ([FUNCTION, size]++bt)
 bc (Fix _ _ _ _ _ t) = do -- f y v no se usan
-    bt <- bc t
+    bt <- bct t
     let size = length bt
-    return ([FUNCTION, size+1]++bt++[RETURN,FIX])
+    return ([FUNCTION, size]++bt++[FIX])
 bc (IfZ _ d t e) = do
     bd <- bc d
     bt <- bc t
@@ -136,6 +136,7 @@ bytecompileModule :: MonadPCF m => [TDecl Term] -> m Bytecode
 bytecompileModule decls = do
     term <- prog2term decls
     bytecode <- bc term
+    --printPCF (show bytecode)
     return (bytecode++[PRINT,STOP])
 
 prog2term :: MonadPCF m => [TDecl Term] -> m Term

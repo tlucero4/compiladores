@@ -4,4 +4,5 @@ let rec exp' (m m' n : Nat) : Nat = ifz n then m else exp' (mult m m') m' (pred 
 let exp (m n : Nat) : Nat = ifz n then 1 else exp' m m (pred n)
 let rec fact' (n n' : Nat) : Nat = ifz n' then n else fact' (mult n n') (pred n')
 let fact (n : Nat) : Nat = fact' n (pred n)
-let _ : Nat = mult 0 100000000
+let add : Nat -> Nat -> Nat = sum
+let _ : Nat = add (fact 5) (fact 5)
