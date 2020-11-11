@@ -13,8 +13,8 @@ type Ent = [Val]
 data Fr =
       KArg Ent Term
     | KClos Clos
-    | KSucc
-    | KPred
+    | KBinOp BinaryOp Term Ent
+    | KBinOp' BinaryOp Val
     | KIfZ Ent Term Term
 
 type Kont = [Fr]
@@ -29,9 +29,10 @@ data Val =
     | C Clos
     
 search :: MonadPCF m => Term -> Ent -> Kont -> m Val
-search (BinaryOp _ _ _ _) e k = failPCF $ "Error de ejecución: La maquina CEK aún no ejecuta operaciones binarias. "
+search (BinaryOp _ o t u) e k = search t e ((KBinOp o u e):k)
 search (IfZ _ c t u) e k = search c e ((KIfZ e t u):k)
 search (App _ t u) e k = search t e ((KArg e u):k)
+
 search (V _ (Bound i)) e k = destroy (e !! i) k
 search (V _ (Free n)) e k = do
     dn <- lookupDecl n
@@ -45,9 +46,14 @@ search (Fix _ f fty x xty t) e k = destroy (C (ClosFix e f fty x xty t)) k
 destroy :: MonadPCF m => Val -> Kont -> m Val
 destroy v [] = return v
 
+destroy (N m) ((KBinOp' Sum (N n)):k) = destroy (N (n+m)) k
+destroy (N m) ((KBinOp' Sub (N n)):k) = if m > n then destroy (N 0) k
+                                                 else destroy (N (n-m)) k
+
 destroy (N 0) ((KIfZ e t u):k) = search t e k
 destroy (N _) ((KIfZ e t u):k) = search u e k
 destroy (C c) ((KArg e t):k) = search t e ((KClos c):k)
+destroy v ((KBinOp o u e):k) = search u e ((KBinOp' o v):k)
 destroy v ((KClos c):k) =
     case c of
          (ClosFun e _ _ t) -> search t (v:e) k
