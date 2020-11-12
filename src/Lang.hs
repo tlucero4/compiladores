@@ -72,6 +72,7 @@ data STm info var =
   | SApp info (STm info var) (STm info var)
   | SUnaryOp info UnaryOp
   | SBinaryOp info BinaryOp
+  | SInfixBinaryOp info BinaryOp (STm info var)
   | SFix info Name STy Name STy (STm info var)
 --  | SFix info [(Name, Ty)] (STm info var)     ¿realmente existe una version de Fix con multiples variables?
   | SIfZ info (STm info var) (STm info var) (STm info var)

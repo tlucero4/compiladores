@@ -32,7 +32,7 @@ lexer = Tok.makeTokenParser $
                           "rec", "type", "in",
                           "succ", "pred", "ifz", "Nat",
                           "sum", "sub"],
-         reservedOpNames = ["->",":","="]
+         reservedOpNames = ["->",":","=","+","-"]
         }
 
 whiteSpace :: P ()
@@ -69,99 +69,6 @@ getPos = do pos <- getPosition
           
 const :: P Const
 const = CNat <$> num
-{-
-unaryOp :: P NTerm
-unaryOp = do
-  i <- getPos
-  foldr (\(w, r) rest -> try (do 
-                                 reserved w
-                                 a <- atom
-                                 return (r a)) <|> rest) parserZero (mapping i)
-  where
-   mapping i = [
-       ("succ", UnaryOp i Succ)
-     , ("pred", UnaryOp i Pred)
-    ]
-
-atom :: P NTerm
-atom =     (flip Const <$> const <*> getPos)
-       <|> flip V <$> var <*> getPos
-       <|> parens tm
-
-lam :: P NTerm
-lam = do i <- getPos
-         reserved "fun"
-         (v,ty) <- parens $ do 
-                    v <- var
-                    reservedOp ":"
-                    ty <- typeP 
-                    return (v,ty)
-         reservedOp "->"
-         t <- tm
-         return (Lam i v ty t)
-
--- Nota el parser app también parsea un solo atom.
-app :: P NTerm
-app = (do i <- getPos
-          f <- atom
-          args <- many atom
-          return (foldl (App i) f args))
-
-ifz :: P NTerm
-ifz = do i <- getPos
-         reserved "ifz"
-         c <- tm
-         reserved "then"
-         t <- tm
-         reserved "else"
-         e <- tm
-         return (IfZ i c t e)
-
-fix :: P NTerm
-fix = do i <- getPos
-         reserved "fix"
-         (f, fty) <- parens binding
-         (x, xty) <- parens binding
-         reservedOp "->"
-         t <- tm
-         return (Fix i f fty x xty t)
-
--- | Parser de términos
-tm :: P NTerm
-tm = app <|> lam <|> ifz <|> unaryOp <|> fix
-
--- | Parser de declaraciones
-decl :: P (Decl NTerm)
-decl = do 
-     i <- getPos
-     reserved "let"
-     v <- var
-     reservedOp "="
-     t <- tm
-     return (Decl i v t)
-
--- | Parser de programas (listas de declaraciones) 
-program :: P [Decl NTerm]
-program = many decl
-
--- | Parsea una declaración a un término
--- Útil para las sesiones interactivas
-declOrTm :: P (Either (Decl NTerm) NTerm)
-declOrTm =  try (Left <$> decl) <|> (Right <$> tm)
-
--- Corre un parser, chequeando que se pueda consumir toda la entrada
-runP :: P a -> String -> String -> Either ParseError a
-runP p s filename = runParser (whiteSpace *> p <* eof) () filename s
-
---para debugging en uso interactivo (ghci)
-parse :: String -> NTerm
-parse s = case runP tm s "" of
-            Right t -> t
-            Left e -> error ("no parse: " ++ show s)
-            
-            -}
-
--- Sección para parsear azucar sintactica:
 
 binding :: P (Name, STy)
 binding = do v <- var
@@ -184,28 +91,7 @@ typeP = try (do
           y <- typeP
           return (SFunTy x y))
       <|> tyatom
-      
-sconst :: P Const
-sconst = CNat <$> num
 
--- esta implementacion queda desestimada
-{-
-sunaryOp :: P STerm
-sunaryOp = do
-  i <- getPos
-  foldr (\(w, r) rest -> try (do 
-                                 reserved w
-                                 a <- satom
-                                 return (r a)) <|> rest) parserZero (mapping i)
-  where
-   mapping i = [
-       ("succ", SUnaryOp i Succ)
-     , ("pred", SUnaryOp i Pred)
-    ]
-    -}
-
-    -- ¿como hacemos para que en elab se diferencie entre un sunaryOp sin aplicacion con uno al que le sigue un termino?
-    -- ¿se podría usando sapp? ¿habria que ver en el desugar de SApp si hay un pred seguido de un termino?
 unaryOpName :: P UnaryOp
 unaryOpName =
       (reserved "succ" >> return Succ)
@@ -215,7 +101,12 @@ binaryOpName :: P BinaryOp
 binaryOpName =
       (reserved "sum" >> return Sum)
   <|> (reserved "sub" >> return Sub)
-  
+
+infixBinaryOpName :: P BinaryOp
+infixBinaryOpName =
+      (reserved "+" >> return Sum)
+  <|> (reserved "-" >> return Sub)
+
 tyvar :: P Name
 tyvar = Tok.lexeme lexer $ do
  c  <- upper
@@ -229,6 +120,12 @@ sunaryOp = do
              o <- unaryOpName
              return (SUnaryOp i o)
              
+infixBinaryOp :: P STerm
+infixBinaryOp = do i <- getPos
+                   o <- infixBinaryOpName
+                   t <- stm
+                   return (SInfixBinaryOp i o t)
+
 sbinaryOp :: P STerm
 sbinaryOp = do
              i <- getPos
@@ -238,6 +135,7 @@ sbinaryOp = do
 satom :: P STerm
 satom =     (flip SConst <$> const <*> getPos)
        <|> flip SV <$> var <*> getPos
+       <|> infixBinaryOp
        <|> sbinaryOp
        <|> sunaryOp
        <|> parens stm

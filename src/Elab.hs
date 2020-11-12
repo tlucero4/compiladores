@@ -68,7 +68,9 @@ desugar (SLam p [] t)          = failPosPCF p $ "La función debe tener un argum
 desugar (SLam p l t)           = sLam p l t
 desugar (SApp p h a)           =  do dh <- desugar h
                                      da <- desugar a
-                                     return (App p dh da)
+                                     case a of
+                                          (SInfixBinaryOp _ _ _) -> return (App p da dh)
+                                          _                      -> return (App p dh da)
 -- Fix deberia tener una lista de variables con sus tipos? En la teoria no se usa nunca
 desugar (SFix p f fty n nty t) = do dfty <- desugarTy fty
                                     dnty <- desugarTy nty
@@ -81,6 +83,8 @@ desugar (SIfZ p c t e)         = do dc <- desugar c
 desugar (SUnaryOp p Succ)         = return (Lam p "x" NatTy (BinaryOp p Sum (V p "x") (Const p (CNat 1))))
 desugar (SUnaryOp p Pred)         = return (Lam p "x" NatTy (BinaryOp p Sub (V p "x") (Const p (CNat 1))))
 desugar (SBinaryOp p o)         = return (Lam p "x" NatTy (Lam p "y" NatTy (BinaryOp p o (V p "x") (V p "y"))))
+desugar (SInfixBinaryOp p o t)  = do dt <- desugar t
+                                     return (Lam p "x" NatTy (BinaryOp p o (V p "x") dt))
 desugar (SLet p _ _   [] True _ _)  = failPosPCF p $ "La función recursiva debe tener un argumento"
 desugar (SLet p n nty [] False d a) = do dd <- desugar d
                                          da <- desugar a
