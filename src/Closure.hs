@@ -36,18 +36,29 @@ closureConvert (Let _ n _ t u) = do cn <- getFreshName n
 closureConvert (App _ f x) = do  ccf <- closureConvert f
                                  ccx <- closureConvert x
                                  return (IrCall (IrAccess ccf 0) [ccf,ccx])
-closureConvert x@(Lam _ n _ t) = do idn <- getFreshName ""
+closureConvert c@(Lam _ n _ t) = do idn <- getFreshName ""
                                     fn <- getFreshName n
                                     fc <- getFreshName "clo"
                                     cct <- closureConvert (open fn t)
-                                    let fv = (freshVars . freeVars) x
+                                    let fv = (freshVars . freeVars) c
                                         idan = [fc,fn]
                                         ida = length idan
                                         idb = makeBlock fv 1 fc cct
                                         fvc = fmap (\n -> IrVar n) fv
                                     tell [(IrFun idn ida idan idb)]
                                     return (MkClosure idn fvc)
-closureConvert (Fix _ f _ x _ t) = undefined
+closureConvert c@(Fix _ f _ x _ t) = do idn <- getFreshName ""
+                                        fn <- getFreshName f
+                                        fx <- getFreshName x
+                                        fc <- getFreshName "clo"
+                                        cct <- closureConvert (openN [fn,fx] t)
+                                        let fv = (freshVars . freeVars) c
+                                            idan = [fc,fx]
+                                            ida = length idan
+                                            idb = IrLet fn (IrVar fc) (makeBlock fv 1 fc cct)
+                                            fvc = fmap (\n -> IrVar n) fv
+                                        tell [(IrFun idn ida idan idb)]
+                                        return (MkClosure idn fvc)
 
 
 runCC :: [TDecl Term] -> Int -> [IrDecl]
