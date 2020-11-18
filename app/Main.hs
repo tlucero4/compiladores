@@ -21,7 +21,6 @@ import Control.Monad.Trans
 import Data.List (nub,  intersperse, isPrefixOf )
 import Data.Char ( isSpace )
 import Control.Exception ( catch , IOException )
-import System.Environment ( getArgs )
 import System.IO ( stderr, hPutStr )
 
 import Global ( GlEnv(..) )
@@ -35,6 +34,7 @@ import PPrint ( pp , ppTy )
 import MonadPCF
 import TypeChecker ( tc, tcDecl )
 import Bytecompile
+import Closure (runCC)
 
 prompt :: String
 prompt = "PCF> "
@@ -44,12 +44,14 @@ prompt = "PCF> "
 data Mode =   Interactive
             | Typecheck
             | Bytecompile
+            | ClosureConvert
             | Run
 
 -- | Parser de banderas
 parseMode :: Parser Mode
 parseMode = flag' Typecheck ( long "typecheck" <> short 't' <> help "Solo chequear tipos")
         <|> flag' Bytecompile (long "bytecompile" <> short 'c' <> help "Compilar a la BVM")
+        <|> flag' ClosureConvert (long "cc" <> help "Hacer conversión de clausuras")
         <|> flag' Run (long "run" <> short 'r' <> help "Ejecutar bytecode en la BVM")
         <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva" )
 
@@ -74,10 +76,32 @@ go (Typecheck, files) = do
 go (Bytecompile, files) = do
     runPCF (bytecompileFiles files False)
     return ()
+go (ClosureConvert, files) = do
+    runPCF (ccFile files)
+    return ()
 go (Run,files) = do
     runPCF (byterunFiles files)
     return ()
 
+ccShow :: (MonadPCF m, MonadMask m) => [IrDecl] -> m ()
+ccShow [] = return ()
+ccShow (x:xs) = do printPCF (show x)
+                   ccShow xs
+    
+ccFile ::  (MonadPCF m, MonadMask m) => [String] -> m ()
+ccFile [] = return ()
+ccFile (f:_) = do
+    printPCF ("Abriendo "++f++"...")
+    let filename = reverse(dropWhile isSpace (reverse f))
+    x <- liftIO $ catch (readFile filename)
+               (\e -> do let err = show (e :: IOException)
+                         hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
+                         return "")
+    sdecls <- parseIO filename sprogram x
+    decls <- bc_elab_sdecl sdecls
+    ccShow (runCC decls 0)
+    return ()
+    
 bytecompileFiles :: (MonadPCF m, MonadMask m) => [String] -> Bool -> m ()
 bytecompileFiles [] _       = return ()
 bytecompileFiles (x:xs) jtc = do

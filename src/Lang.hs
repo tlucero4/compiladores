@@ -53,12 +53,17 @@ data BinaryOp = Sum | Sub
   deriving Show
 
 -- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
+
+data IrDecl = IrFun { irDeclName :: Name, irDeclArity :: Int, irDeclArgNames :: [Name], irDeclBody :: Ir } -- Asignamos un fragmento de codigo estatico a la funcion
+            | IrVal { irDeclName :: Name, irDeclDef :: Ir } -- Asignamos una clausura a el nombre de la funcion
+    deriving (Show)
+
 data Decl a = Decl { declPos :: Pos, declName :: Name, declBody :: a }
   deriving (Show,Functor)
 
 data TDecl a = TDecl { tdeclPos :: Pos, tdeclName :: Name, tdeclType :: Ty, tdeclBody :: a }
   deriving (Show,Functor)
-  
+
 data SDecl a =
     SDecl { sDeclPos :: Pos, sDeclName :: Name, sDeclType :: STy, sDeclVars :: [(Name, STy)], sDeclRec :: Bool, sDeclBody :: a }
   | SType { sDeclPos :: Pos, sNameType :: Name, sSynType :: STy }
@@ -93,6 +98,16 @@ data Tm info var =
   | IfZ info (Tm info var) (Tm info var) (Tm info var)
   | Let info Name Ty (Tm info var) (Tm info var)
   deriving (Show, Functor)
+
+data Ir = IrVar Name
+        | IrCall Ir [Ir]
+        | IrConst Const
+        | IrBinaryOp BinaryOp Ir Ir
+        | IrLet Name Ir Ir
+        | IrIfZ Ir Ir Ir
+        | MkClosure Name [Ir]
+        | IrAccess Ir Int
+    deriving (Show)
 
 type STerm = STm Pos Name
 type NTerm = Tm Pos Name   -- ^ 'Tm' tiene 'Name's como variables ligadas y libres, guarda posición
