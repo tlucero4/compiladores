@@ -27,7 +27,7 @@ elab' (App p h a)           = App p (elab' h) (elab' a)
 elab' (Fix p f fty x xty t) = Fix p f fty x xty (closeN [f, x] (elab' t))
 elab' (IfZ p c t e)         = IfZ p (elab' c) (elab' t) (elab' e)
 elab' (BinaryOp p o t1 t2)  = BinaryOp p o (elab' t1) (elab' t2)
---elab' (Let p n nty f x)     = Let p n nty (elab' f) (close n (elab' x))
+elab' (Let p n nty f x)     = Let p n nty (elab' f) (close n (elab' x))
 
 ---elab_decl :: Decl NTerm -> Decl Term
 ---elab_decl = fmap elab
@@ -91,8 +91,8 @@ desugar (SLet p _ _   [] True _ _)  = failPosPCF p $ "La función recursiva debe
 desugar (SLet p n nty [] False d a) = do dd <- desugar d
                                          da <- desugar a
                                          dnty <- desugarTy nty
-                                         return (App p (Lam p n dnty da) dd)
-                                         --return (Let n dnty dd da)
+                                         --return (App p (Lam p n dnty da) dd)
+                                         return (Let p n dnty dd da)
 desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)
 

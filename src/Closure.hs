@@ -29,8 +29,9 @@ closureConvert (IfZ _ c t u) = do ccc <- closureConvert c
                                   cct <- closureConvert t
                                   ccu <- closureConvert u
                                   return (IrIfZ ccc cct ccu)
-closureConvert (Let _ n _ t u) = do cct <- closureConvert t
-                                    ccu <- closureConvert u
+closureConvert (Let _ n _ t u) = do cn <- getFreshName n
+                                    cct <- closureConvert t
+                                    ccu <- closureConvert (open cn u)
                                     return (IrLet n cct ccu)
 closureConvert (App _ f x) = do  ccf <- closureConvert f
                                  ccx <- closureConvert x
