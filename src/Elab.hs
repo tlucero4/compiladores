@@ -27,6 +27,7 @@ elab' (App p h a)           = App p (elab' h) (elab' a)
 elab' (Fix p f fty x xty t) = Fix p f fty x xty (closeN [f, x] (elab' t))
 elab' (IfZ p c t e)         = IfZ p (elab' c) (elab' t) (elab' e)
 elab' (BinaryOp p o t1 t2)  = BinaryOp p o (elab' t1) (elab' t2)
+--elab' (Let p n nty f x)     = Let p n nty (elab' f) (close n (elab' x))
 
 ---elab_decl :: Decl NTerm -> Decl Term
 ---elab_decl = fmap elab
@@ -67,10 +68,11 @@ desugar (SConst p c)           = return (Const p c)
 desugar (SLam p [] t)          = failPosPCF p $ "La función debe tener un argumento"
 desugar (SLam p l t)           = sLam p l t
 desugar (SApp p h a)           =  do dh <- desugar h
-                                     da <- desugar a
                                      case a of
-                                          (SInfixBinaryOp _ _ _) -> return (App p da dh)
-                                          _                      -> return (App p dh da)
+                                          (SInfixBinaryOp _ o t) -> do  dt <- desugar t
+                                                                        return (BinaryOp p o dh dt)
+                                          _                      -> do  da <- desugar a
+                                                                        return (App p dh da)
 -- Fix deberia tener una lista de variables con sus tipos? En la teoria no se usa nunca
 desugar (SFix p f fty n nty t) = do dfty <- desugarTy fty
                                     dnty <- desugarTy nty
@@ -89,9 +91,8 @@ desugar (SLet p _ _   [] True _ _)  = failPosPCF p $ "La función recursiva debe
 desugar (SLet p n nty [] False d a) = do dd <- desugar d
                                          da <- desugar a
                                          dnty <- desugarTy nty
-                                         -- return (App p (Lam p n dnty da) dd)
-                                         -- el unico cambio para bytecode sería este (hay que resolverlo):
-                                         return (Let p n dnty dd da)
+                                         return (App p (Lam p n dnty da) dd)
+                                         --return (Let n dnty dd da)
 desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)
 

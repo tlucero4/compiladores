@@ -59,6 +59,12 @@ tc (Fix p f fty x xty t) bs = do
          ty' <- tc t' ((x,xty):(f,fty):bs)
          expect cod ty' t
          return fty
+tc (Let p n nty d a) bs = do
+        dty <- tc d bs
+        when (nty /= dty) $ do
+           failPosPCF p "El tipo declarado en el let debe coincidir con su definición"
+        aty <- tc a ((n,nty):bs)
+        return aty
        
 -- | @'typeError' t s@ lanza un error de tipo para el término @t@ 
 typeError :: MonadPCF m => Term   -- ^ término que se está chequeando  
