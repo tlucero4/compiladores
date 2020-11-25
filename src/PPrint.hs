@@ -46,6 +46,7 @@ openAll (Lam p x ty t) =
     let ([x'], t') = openRename [x] t in
     Lam p x' ty (openAll t')
 openAll (App p t u) = App p (openAll t) (openAll u)
+openAll (Let p n nty d a) = Let p n nty (openAll d) (openAll a)
 openAll (Fix p f fty x xty t) =
     let ([f', x'], t') = openRename [f, x] t in
     Fix p f' fty x' xty (openAll t')
@@ -121,6 +122,10 @@ t2doc at (IfZ _ c t e) =
 t2doc at (BinaryOp _ o t1 t2) =
   parenIf at $
   binary2doc o <+> t2doc True t1 <+> t2doc True t2
+  
+t2doc at (Let _ n nty d a) =
+    parenIf at $
+    sep [ text "let", name2doc n,text ":",ty2doc nty, text "=", t2doc at d, text "in", t2doc at a ]
 
 binding2doc (x, ty) =
   parens (sep [name2doc x, text ":", ty2doc ty])

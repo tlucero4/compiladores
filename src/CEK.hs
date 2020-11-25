@@ -16,6 +16,8 @@ data Fr =
     | KBinOp BinaryOp Term Ent
     | KBinOp' BinaryOp Val
     | KIfZ Ent Term Term
+    | KLet Ent Term
+
 
 type Kont = [Fr]
 
@@ -32,6 +34,7 @@ search :: MonadPCF m => Term -> Ent -> Kont -> m Val
 search (BinaryOp _ o t u) e k = search t e ((KBinOp o u e):k)
 search (IfZ _ c t u) e k = search c e ((KIfZ e t u):k)
 search (App _ t u) e k = search t e ((KArg e u):k)
+search (Let _ n _ d a) e k = search d e ((KLet e a):k)
 
 search (V _ (Bound i)) e k = destroy (e !! i) k
 search (V _ (Free n)) e k = do
@@ -50,9 +53,11 @@ destroy (N m) ((KBinOp' Sum (N n)):k) = destroy (N (n+m)) k
 destroy (N m) ((KBinOp' Sub (N n)):k) = if m > n then destroy (N 0) k
                                                  else destroy (N (n-m)) k
 
+
 destroy (N 0) ((KIfZ e t u):k) = search t e k
 destroy (N _) ((KIfZ e t u):k) = search u e k
 destroy (C c) ((KArg e t):k) = search t e ((KClos c):k)
+destroy v ((KLet e t):k) = search t (v:e) k
 destroy v ((KBinOp o u e):k) = search u e ((KBinOp' o v):k)
 destroy v ((KClos c):k) =
     case c of
