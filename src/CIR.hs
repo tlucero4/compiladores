@@ -2,6 +2,7 @@ module CIR where
 
 import Lang
 import Data.List (intercalate)
+import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 
 newtype Reg = Temp String
@@ -65,52 +66,70 @@ instance Show CanonProg where
 
 
       -- A partir de acá desarrollamos la conversión:
+getFreshName :: Name -> StateT Int (Writer [BasicBlock]) Name
+getFreshName n = do i <- get
+                    modify (+1)
+                    return ("_" ++ n ++ show i)
 
-procesar :: Ir -> Writer [Inst] Name
-procesar ... = do res <- ...
-                  tell (Store fresh_name res)
-                  return fresh_name
-      
-cirexp :: Ir -> Writer [Inst] Expr
-cirexp i = undefined
-cirexp (IrVar n) = CIR.V (G n)
-cirexp (IrConst (CNat c)) = CIR.V (C c)
-
-cirexp (IrCall i is) = 
-cirexp (IrBinaryOp o t u) = do  t_reg <- procesar t
-                                u_reg <- procesar u
-                                return $ BinOp o (V (R t_reg)) (V (R u_reg))
-cirexp (IrLet n d a) = 
-cirexp (IrIfZ c t e) = 
-cirexp (MkClosure n is) = 
-cirexp (IrAccess i n) =
-      
-terminator :: Terminator
-terminator = undefined
-      
-mkBlocks :: Ir -> Writer [BasicBlock] Val
+mkBinOpBlocks :: Name -> BinaryOp -> Val -> Val -> [BasicBlock]
+mkBinOpBlocks n o v1 v2 = let reg = Temp n
+                          in [("entry", [Assign reg $ BinOp o v1 v2], Return $ R reg)]
+                          
+mkIfZBlocks :: Name -> Val -> Val -> Val -> [BasicBlock]
+mkBinOpBlocks n vc vt ve = let reg = Temp n
+                               regt = Temp $ n++"'"
+                               rege = Temp $ n++"''"
+                               cond = Eq vc $ C 0
+                           in [("cond", [undefined], CondJump cond "then" "else"),
+                               ("then", [Assign regt $ V vt], Jump "ifcont"),
+                               ("else", [Assign rege $ V ve], Jump "ifcont"),
+                               ("contif", [Assign reg $ Phi [("then", R regt), ("else", R rege)]], Return $ R reg)]
+                               
+mkBlocks :: Ir -> StateT Int (Writer [BasicBlock]) Val
 mkBlocks = undefined
-mkBlocks (IrVar n) = 
-mkBlocks (IrCall i is) = 
-mkBlocks (IrConst c) = 
-mkBlocks (IrBinaryOp o t u) = BinOp o 
-mkBlocks (IrLet n d a) = 
-mkBlocks (IrIfZ c t e) = mkCond c ++ mkThen t ++ mkElse e
-mkBlocks (MkClosure n is) = 
-mkBlocks (IrAccess i n) = 
+mkBlocks (IrVar n) = return $ G n
+mkBlocks (IrConst (CNat n)) = return $ C n
+mkBlocks (IrCall i is) = do v <- mkBlocks i
+                            vs <- mapM_ mkBlocks is -- ???
+                            f <- getFreshName "call"
+                            tell $ mkCallBlocks f v vs
+                            return $ R f
+mkBlocks (IrBinaryOp o t u) = do vt <- mkBlocks t
+                                 vu <- mkBlocks u
+                                 f <- getFreshName "binop"
+                                 tell $ mkBinOpBlocks f o vt vu
+                                 return $ R f
+mkBlocks (IrLet n d a) = undefined
+mkBlocks (IrIfZ c t e) = do vc <- mkBlocks c
+                            vt <- mkBlocks t
+                            ve <- mkBlocks e
+                            f <- getFreshName "ifz"
+                            tell $ mkIfZBlocks f vc vt ve
+                            return $ R f
+mkBlocks (MkClosure n is) = undefined
+mkBlocks (IrAccess i n) = do v <- mkBlocks i
+                             f <- getFreshName "access"
+                             tell $ mkAccessBlocks f v n
+                             return $ R f
 
-mkInstrMain :: [IrDecl] -> [Inst]
-mkInstrMain [] = []
-mkInstrMain ((IrVal n ir):xs) = (Store n $ cirexp ir) : mkInstrMain xs
+mkInstrMain :: [IrDecl] -> Int -> [Inst]
+mkInstrMain i [] = []
+mkInstrMain i ((IrVal n ir):xs) = let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
+                                      -- que hacemos con la lista [BasicBlock] bs??
+                                  in (Store n $ V v) : mkInstrMain (i' + 1) xs
       
-rcFun :: Name -> [Name] -> Ir -> CanonFun
-rcFun n a ir = (n, a, mkBlocks ir)
+rcFun :: Name -> [Name] -> Ir -> Int -> (CanonFun, Int)
+rcFun n a ir i = let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
+                     cf = (n, a, bs)
+                 in (cf, i')
       
 runCanon :: [IrDecl] -> CanonProg
-runCanon is = CanonProg $ rc [] is -- en el primer argumento de rc llevamos las IrVal para despues construir pcfmain
+runCanon is = CanonProg $ rc [] is 0 -- en el primer argumento de rc llevamos las IrVal para despues construir pcfmain
 
-rc :: [IrDecl] -> [IrDecl] -> [Either CanonFun CanonVal]
-rc gs [] = [ Left ("pcfmain", [], [("", mkInstrMain gs, terminator)]) ]
-rc ys (x:xs) = case x of
-                 IrFun n _ a ir -> (Left $ rcFun n a ir) : rc ys xs
-                 IrVal n i      -> (Right n)             : rc (x:ys) xs
+rc :: [IrDecl] -> [IrDecl] -> Int -> [Either CanonFun CanonVal]
+--rc gs [] i = [ Left ("pcfmain", [], [("undefined", mkInstrMain i gs, Jump "ultimaEtiqueta")]) ]
+rc gs p@[IrVal n _] i = [ Left ("pcfmain", [], [("entry", mkInstrMain i $ gs++p, Jump n)]) ] -- corregir
+rc ys (x:xs) i = case x of
+                    IrFun n _ a ir -> let (cf, i') = rcFun n a ir i
+                                      in (Left $ rc) : rc ys xs i'
+                    IrVal n _      -> (Right n) : rc (x:ys) xs i
