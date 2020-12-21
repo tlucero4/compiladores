@@ -35,6 +35,8 @@ import MonadPCF
 import TypeChecker ( tc, tcDecl )
 import Bytecompile
 import Closure (runCC)
+import CIR (runCanon)
+import InstSel (codegen)
 
 prompt :: String
 prompt = "PCF> "
@@ -99,7 +101,11 @@ ccFile (f:_) = do
                          return "")
     sdecls <- parseIO filename sprogram x
     decls <- bc_elab_sdecl sdecls
-    ccShow (runCC decls 0)
+    let irdecls = runCC decls 0
+    ccShow irdecls
+    let canon = runCanon irdecls
+    printPCF $ show canon
+    liftIO $ writeFile "output.ll" $ show (codegen canon)
     return ()
     
 bytecompileFiles :: (MonadPCF m, MonadMask m) => [String] -> Bool -> m ()
@@ -239,7 +245,7 @@ commands
   =  [ Cmd [":browse"]      ""        (const Browse) "Ver los nombres en scope",
        Cmd [":load"]        "<file>"  (Compile . CompileFile)
                                                      "Cargar un programa desde un archivo",
-       Cmd [":print"]       "<exp>"   Print          "Imprime un término y sus ASTs sin evaluarlo",
+       Cmd [":print"]       "<exp>"   Main.Print     "Imprime un término y sus ASTs sin evaluarlo",
        Cmd [":dprint"]      "<exp>"   PrintD         "Imprime una declaración y sus ASTs",
        Cmd [":type"]        "<exp>"   Type           "Chequea el tipo de una expresión",
        Cmd [":quit",":Q"]        ""        (const Quit)   "Salir del intérprete",
@@ -271,7 +277,7 @@ handleCommand cmd = do
                           CompileInteractive e -> compilePhrase e
                           CompileFile f        -> put (s {lfile=f}) >> compileFile f
                       return True
-       Print e   -> printPhrase e >> return True
+       Main.Print e   -> printPhrase e >> return True
        PrintD d  -> printDecl d >> return True
        Type e    -> typeCheckPhrase e >> return True
 
