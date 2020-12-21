@@ -101,7 +101,7 @@ bc :: MonadPCF m => Term -> m Bytecode
 bc (V _ (Bound i)) = return ([ACCESS, i])
 bc (V _ (Free _)) = failPCF $ "Error de compilación: No debería haber variables libres."
 bc (Const _ (CNat n)) = return([CONST, n])
-bc (BinaryOp _ Sum t1 t2) = do
+bc (BinaryOp _ Add t1 t2) = do
     bt1 <- bc t1
     bt2 <- bc t2
     return (bt1++bt2++[SUM])

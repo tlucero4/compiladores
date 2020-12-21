@@ -31,7 +31,7 @@ lexer = Tok.makeTokenParser $
          reservedNames = ["let", "fun", "fix", "then", "else",
                           "rec", "type", "in",
                           "succ", "pred", "ifz", "Nat",
-                          "sum", "sub"],
+                          "add", "sub"],
          reservedOpNames = ["->",":","=","+","-"]
         }
 
@@ -99,12 +99,12 @@ unaryOpName =
   
 binaryOpName :: P BinaryOp
 binaryOpName =
-      (reserved "sum" >> return Sum)
+      (reserved "add" >> return Add)
   <|> (reserved "sub" >> return Sub)
 
 infixBinaryOpName :: P BinaryOp
 infixBinaryOpName =
-      (reserved "+" >> return Sum)
+      (reserved "+" >> return Add)
   <|> (reserved "-" >> return Sub)
 
 tyvar :: P Name

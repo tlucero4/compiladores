@@ -46,10 +46,10 @@ type Name = String
 data Const = CNat Int
   deriving Show
 
-data UnaryOp = Succ | Pred
+data UnaryOp = Succ | Pred | Print -- print no usado
   deriving Show
   
-data BinaryOp = Sum | Sub
+data BinaryOp = Add | Sub | Prod -- prod no usado
   deriving Show
 
 -- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración

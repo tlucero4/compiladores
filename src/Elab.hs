@@ -82,7 +82,7 @@ desugar (SIfZ p c t e)         = do dc <- desugar c
                                     dt <- desugar t
                                     de <- desugar e
                                     return (IfZ p dc dt de)
-desugar (SUnaryOp p Succ)         = return (Lam p "x" NatTy (BinaryOp p Sum (V p "x") (Const p (CNat 1))))
+desugar (SUnaryOp p Succ)         = return (Lam p "x" NatTy (BinaryOp p Add (V p "x") (Const p (CNat 1))))
 desugar (SUnaryOp p Pred)         = return (Lam p "x" NatTy (BinaryOp p Sub (V p "x") (Const p (CNat 1))))
 desugar (SBinaryOp p o)         = return (Lam p "x" NatTy (Lam p "y" NatTy (BinaryOp p o (V p "x") (V p "y"))))
 desugar (SInfixBinaryOp p o t)  = do dt <- desugar t

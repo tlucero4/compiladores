@@ -28,6 +28,7 @@ dependencies:
 - exceptions
 - binary
 - bytestring
+- llvm-hs-pure
 
 library:
   source-dirs: src

@@ -76,7 +76,7 @@ c2doc :: Const -> Doc
 c2doc (CNat n) = text (show n)
 
 binary2doc :: BinaryOp -> Doc
-binary2doc Sum = text "sum"
+binary2doc Add = text "Add"
 binary2doc Sub = text "sub"
 
 collectApp :: NTerm -> (NTerm, [NTerm])

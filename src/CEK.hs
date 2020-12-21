@@ -49,7 +49,7 @@ search (Fix _ f fty x xty t) e k = destroy (C (ClosFix e f fty x xty t)) k
 destroy :: MonadPCF m => Val -> Kont -> m Val
 destroy v [] = return v
 
-destroy (N m) ((KBinOp' Sum (N n)):k) = destroy (N (n+m)) k
+destroy (N m) ((KBinOp' Add (N n)):k) = destroy (N (n+m)) k
 destroy (N m) ((KBinOp' Sub (N n)):k) = if m > n then destroy (N 0) k
                                                  else destroy (N (n-m)) k
 
