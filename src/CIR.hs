@@ -71,6 +71,10 @@ getFreshName n = do i <- get
                     modify (+1)
                     return ("_" ++ n ++ show i)
 
+-- Funciones para definir bloques auxiliares en las definiciones... En realidad, por ahora, el unico constructor que
+-- genera bloques es irIfZ. Si fuera solo por las demas, el tipo de la monada Writer sería [Instr] en mkBlocks.
+-- Esto lograría no sobrecrear bloques de una sola instrucción. ¿Pero como separamos el caso de irIfZ?
+                    
 mkCallBlocks :: Name -> Val -> [Val] -> [BasicBlock]
 mkCallBlocks n vf vas = let reg = Temp n
                             c = n++"_entry"
@@ -126,12 +130,18 @@ mkBlocks (IrAccess i n) = do v <- mkBlocks i
                              tell $ mkAccessBlocks f v n
                              return $ R (Temp f)
 
-mkInstrMain :: Int -> [IrDecl] -> Writer [BasicBlock] [Inst]
-mkInstrMain i [] = return []
-mkInstrMain i ((IrVal n ir):xs) = do let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
-                                     tell bs
-                                     is <- mkInstrMain (i' + 1) xs
-                                     return $ (Store n $ CIR.V v) : is
+mkInstrMain :: Int -> IrDecl -> Writer [BasicBlock] (Int, Name, Val)
+mkInstrMain i (IrVal n ir) = do let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
+                                tell bs
+                                return (i', n, v)
+      
+mkPcfMain :: Int -> [IrDecl] -> Int -> [BasicBlock]
+mkPcfMain _ [] k = let e1 = "_entry" ++ show k in [(e1, [], Jump "?")]
+mkPcfMain i (x:xs) k = let ((i', n, v), bs) = runWriter $ mkInstrMain i x
+                           e1 = "_entry" ++ show k
+                           e2 = "_entry" ++ (show $ k + 1)
+                           sb = (e1, [Store n $ CIR.V v], Jump e2)
+                       in bs ++ [sb] ++ mkPcfMain i' xs (k+1)
       
 rcFun :: Name -> [Name] -> Ir -> Int -> (CanonFun, Int)
 rcFun n a ir i = let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
@@ -142,9 +152,9 @@ runCanon :: [IrDecl] -> CanonProg
 runCanon is = CanonProg $ rc [] is 0 -- en el primer argumento de rc llevamos las IrVal para despues construir pcfmain
 
 rc :: [IrDecl] -> [IrDecl] -> Int -> [Either CanonFun CanonVal]
---rc gs [] i = [ Left ("pcfmain", [], [("undefined", mkInstrMain i gs, Jump "ultimaEtiqueta")]) ]
-rc gs p@[IrVal n _] i = let (is, bs) = runWriter $ mkInstrMain i (gs++p)
-                        in [ Right n, Left ("pcfmain", [], bs++[("entry", is, Return $ G n)] ) ]
+rc gs [] i = [ Left ("pcfmain", [], mkPcfMain i gs 0) ]
+--rc gs p@[IrVal n _] i = let (is, bs) = runWriter $ mkInstrMain i (gs++p)
+--                        in [ Left ("pcfmain", [], bs++[("entry", is, Return $ G n)] ) ]
 rc ys (x:xs) i = case x of
                     IrFun n _ a ir -> let (cf, i') = rcFun n a ir i
                                       in (Left $ cf) : rc ys xs i'
