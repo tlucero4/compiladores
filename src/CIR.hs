@@ -66,10 +66,14 @@ instance Show CanonProg where
 
 
       -- A partir de acá desarrollamos la conversión:
-getFreshName :: Name -> StateT Int (Writer [BasicBlock]) Name
-getFreshName n = do i <- get
-                    modify (+1)
-                    return ("_" ++ n ++ show i)
+getLabel :: [IrDecl] -> Loc
+getLabel [] = "end"
+getLabel ((IrVal n _) : _) = n
+      
+getFreshName :: Name -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Name
+getFreshName n = do (k, _, _) <- get
+                    modify (\(k, i, l) -> (k+1, i, l))
+                    return ("_" ++ n ++ show k)
 
 -- Funciones para definir bloques auxiliares en las definiciones... En realidad, por ahora, el unico constructor que
 -- genera bloques es irIfZ. Si fuera solo por las demas, el tipo de la monada Writer sería [Instr] en mkBlocks.
@@ -84,12 +88,12 @@ mkAccessBlocks :: Name -> Val -> Int -> [BasicBlock]
 mkAccessBlocks n v i = let reg = Temp n
                            b = n++"_entry"
                        in [(b, [Assign reg $ Access v i], Return $ R reg)]
-                    
+ {-                   
 mkBinOpBlocks :: Name -> BinaryOp -> Val -> Val -> [BasicBlock]
 mkBinOpBlocks n o v1 v2 = let reg = Temp n
                               b = n++"_entry"
                           in [(b, [Assign reg $ BinOp o v1 v2], Return $ R reg)]
-                          
+                          -}                
 mkIfZBlocks :: Name -> Val -> Val -> Val -> [BasicBlock]
 mkIfZBlocks n vc vt ve = let reg = Temp n
                              c = n++"_cond"
@@ -104,7 +108,7 @@ mkIfZBlocks n vc vt ve = let reg = Temp n
                              (e, [Assign rege $ CIR.V ve], Jump ic),
                              (ic, [Assign reg $ Phi [(t, R regt), (e, R rege)]], Return $ R reg)]
                                
-mkBlocks :: Ir -> StateT Int (Writer [BasicBlock]) Val
+mkBlocks :: Ir -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Val
 mkBlocks (IrVar n) = return $ G n
 mkBlocks (IrConst (CNat n)) = return $ C n
 mkBlocks (IrCall i is) = do v <- mkBlocks i
@@ -115,8 +119,9 @@ mkBlocks (IrCall i is) = do v <- mkBlocks i
 mkBlocks (IrBinaryOp o t u) = do vt <- mkBlocks t
                                  vu <- mkBlocks u
                                  f <- getFreshName "binop"
-                                 tell $ mkBinOpBlocks f o vt vu
-                                 return $ R (Temp f)
+                                 let reg = Temp f
+                                 modify (\(k, i, l) -> (k, i ++ [Assign reg $ BinOp o vt vu], l))
+                                 return $ R reg
 mkBlocks (IrLet n d a) = undefined
 mkBlocks (IrIfZ c t e) = do vc <- mkBlocks c
                             vt <- mkBlocks t
@@ -130,29 +135,28 @@ mkBlocks (IrAccess i n) = do v <- mkBlocks i
                              tell $ mkAccessBlocks f v n
                              return $ R (Temp f)
 
-mkInstrMain :: Int -> IrDecl -> Writer [BasicBlock] (Int, Name, Val)
-mkInstrMain i (IrVal n ir) = do let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
+mkInstrMain :: Int -> IrDecl -> Writer [BasicBlock] (Int, Name, [Inst], Val)
+mkInstrMain k (IrVal n ir) = do let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks ir) (k, [], n))
                                 tell bs
-                                return (i', n, v)
+                                return (k', l', i', v)
       
-mkPcfMain :: Int -> [IrDecl] -> Int -> [BasicBlock]
-mkPcfMain _ [] k = let e1 = "_entry" ++ show k in [(e1, [], Jump "?")]
-mkPcfMain i (x:xs) k = let ((i', n, v), bs) = runWriter $ mkInstrMain i x
-                           e1 = "_entry" ++ show k
-                           e2 = "_entry" ++ (show $ k + 1)
-                           sb = (e1, [Store n $ CIR.V v], Jump e2)
-                       in bs ++ [sb] ++ mkPcfMain i' xs (k+1)
+mkPcfMain :: Int -> [IrDecl] -> [BasicBlock]
+mkPcfMain _ [] = []
+mkPcfMain k (x:xs) = let ((k', l, i, v), bs) = runWriter $ mkInstrMain k x
+                         nl = getLabel xs
+                         sb = (l, i ++ [Store l $ CIR.V v], Jump nl)
+                     in bs ++ [sb] ++ mkPcfMain k' xs
       
 rcFun :: Name -> [Name] -> Ir -> Int -> (CanonFun, Int)
-rcFun n a ir i = let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) i)
+rcFun n a ir i = let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) (i, [], n))
                      cf = (n, a, bs)
-                 in (cf, i')
+                 in undefined -- (cf, i')
       
 runCanon :: [IrDecl] -> CanonProg
 runCanon is = CanonProg $ rc [] is 0 -- en el primer argumento de rc llevamos las IrVal para despues construir pcfmain
 
 rc :: [IrDecl] -> [IrDecl] -> Int -> [Either CanonFun CanonVal]
-rc gs [] i = [ Left ("pcfmain", [], mkPcfMain i gs 0) ]
+rc gs [] i = [ Left ("pcfmain", [], mkPcfMain i gs) ]
 --rc gs p@[IrVal n _] i = let (is, bs) = runWriter $ mkInstrMain i (gs++p)
 --                        in [ Left ("pcfmain", [], bs++[("entry", is, Return $ G n)] ) ]
 rc ys (x:xs) i = case x of
