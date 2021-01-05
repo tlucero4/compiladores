@@ -29,7 +29,7 @@ lexer = Tok.makeTokenParser $
         emptyDef {
          commentLine    = "#",
          reservedNames = ["let", "fun", "fix", "then", "else",
-                          "rec", "type", "in",
+                          "rec", "type", "in", "print",
                           "succ", "pred", "ifz", "Nat",
                           "add", "sub"],
          reservedOpNames = ["->",":","=","+","-"]
@@ -96,6 +96,7 @@ unaryOpName :: P UnaryOp
 unaryOpName =
       (reserved "succ" >> return Succ)
   <|> (reserved "pred" >> return Pred)
+  <|> (reserved "print" >> return Print)
   
 binaryOpName :: P BinaryOp
 binaryOpName =

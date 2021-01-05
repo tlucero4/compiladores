@@ -79,6 +79,11 @@ binary2doc :: BinaryOp -> Doc
 binary2doc Add = text "Add"
 binary2doc Sub = text "sub"
 
+unary2doc :: UnaryOp -> Doc
+unary2doc Succ = text "succ"
+unary2doc Pred = text "pred"
+unary2doc Print = text "print"
+
 collectApp :: NTerm -> (NTerm, [NTerm])
 collectApp t = go [] t where
   go ts (App _ h t) = go (t:ts) h
@@ -122,6 +127,10 @@ t2doc at (IfZ _ c t e) =
 t2doc at (BinaryOp _ o t1 t2) =
   parenIf at $
   binary2doc o <+> t2doc True t1 <+> t2doc True t2
+  
+t2doc at (UnaryOp _ o t) =
+  parenIf at $
+  unary2doc o <+> t2doc True t
   
 t2doc at (Let _ n nty d a) =
     parenIf at $

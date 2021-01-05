@@ -35,6 +35,9 @@ tc (BinaryOp p u t1 t2) bs = do
       ty2 <- tc t2 bs
       expect NatTy ty1 t1
       expect NatTy ty2 t2
+tc (UnaryOp p u t) bs = do 
+      ty <- tc t bs
+      expect NatTy ty t
 tc (IfZ p c t t') bs = do
        tyc  <- tc c bs
        expect NatTy tyc c

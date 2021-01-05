@@ -22,6 +22,8 @@ import Data.List (nub,  intersperse, isPrefixOf )
 import Data.Char ( isSpace )
 import Control.Exception ( catch , IOException )
 import System.IO ( stderr, hPutStr )
+import qualified Data.Text.IO as TIO
+import Data.Text.Lazy (toStrict)
 
 import Global ( GlEnv(..) )
 import Errors
@@ -37,6 +39,7 @@ import Bytecompile
 import Closure (runCC)
 import CIR (runCanon)
 import InstSel (codegen)
+import LLVM.Pretty (ppllvm)
 
 prompt :: String
 prompt = "PCF> "
@@ -46,14 +49,14 @@ prompt = "PCF> "
 data Mode =   Interactive
             | Typecheck
             | Bytecompile
-            | ClosureConvert
+            | Canon
             | Run
 
 -- | Parser de banderas
 parseMode :: Parser Mode
 parseMode = flag' Typecheck ( long "typecheck" <> short 't' <> help "Solo chequear tipos")
-        <|> flag' Bytecompile (long "bytecompile" <> short 'c' <> help "Compilar a la BVM")
-        <|> flag' ClosureConvert (long "cc" <> help "Hacer conversión de clausuras")
+        <|> flag' Bytecompile (long "bytecompile" <> short 'b' <> help "Compilar a la BVM")
+        <|> flag' Canon (long "canon" <> short 'c' <> help "Conversión a bajo nivel")
         <|> flag' Run (long "run" <> short 'r' <> help "Ejecutar bytecode en la BVM")
         <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva" )
 
@@ -78,7 +81,7 @@ go (Typecheck, files) = do
 go (Bytecompile, files) = do
     runPCF (bytecompileFiles files False)
     return ()
-go (ClosureConvert, files) = do
+go (Canon, files) = do
     runPCF (ccFile files)
     return ()
 go (Run,files) = do
@@ -101,11 +104,17 @@ ccFile (f:_) = do
                          return "")
     sdecls <- parseIO filename sprogram x
     decls <- bc_elab_sdecl sdecls
+    printPCF "\n\n------------- DECLS:\n"
+    printPCF $ show decls
     let irdecls = runCC decls 0
+    printPCF "\n\n------------- IRDECLS:\n"
     ccShow irdecls
     let canon = runCanon irdecls
+        llvm = toStrict $ ppllvm $ codegen canon
+    printPCF "\n\n------------- CANON:\n"
     printPCF $ show canon
-    liftIO $ writeFile "output.ll" $ show (codegen canon)
+    liftIO $ TIO.writeFile (f++".ll") llvm
+    printPCF ("Archivo "++f++".ll creado.\n")
     return ()
     
 bytecompileFiles :: (MonadPCF m, MonadMask m) => [String] -> Bool -> m ()

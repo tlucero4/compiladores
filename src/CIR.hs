@@ -1,7 +1,7 @@
 module CIR where
 
 import Lang
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 
@@ -66,100 +66,103 @@ instance Show CanonProg where
 
 
       -- A partir de acá desarrollamos la conversión:
-getLabel :: [IrDecl] -> Loc
-getLabel [] = "end"
-getLabel ((IrVal n _) : _) = n
-      
-getFreshName :: Name -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Name
-getFreshName n = do (k, _, _) <- get
-                    modify (\(k, i, l) -> (k+1, i, l))
-                    return ("_" ++ n ++ show k)
 
--- Funciones para definir bloques auxiliares en las definiciones... En realidad, por ahora, el unico constructor que
--- genera bloques es irIfZ. Si fuera solo por las demas, el tipo de la monada Writer sería [Instr] en mkBlocks.
--- Esto lograría no sobrecrear bloques de una sola instrucción. ¿Pero como separamos el caso de irIfZ?
-                    
-mkCallBlocks :: Name -> Val -> [Val] -> [BasicBlock]
-mkCallBlocks n vf vas = let reg = Temp n
-                            c = n++"_entry"
-                        in [(c, [Assign reg $ Call vf vas], undefined)]
-                    
-mkAccessBlocks :: Name -> Val -> Int -> [BasicBlock]
-mkAccessBlocks n v i = let reg = Temp n
-                           b = n++"_entry"
-                       in [(b, [Assign reg $ Access v i], Return $ R reg)]
- {-                   
-mkBinOpBlocks :: Name -> BinaryOp -> Val -> Val -> [BasicBlock]
-mkBinOpBlocks n o v1 v2 = let reg = Temp n
-                              b = n++"_entry"
-                          in [(b, [Assign reg $ BinOp o v1 v2], Return $ R reg)]
-                          -}                
-mkIfZBlocks :: Name -> Val -> Val -> Val -> [BasicBlock]
-mkIfZBlocks n vc vt ve = let reg = Temp n
-                             c = n++"_cond"
-                             t = n++"_then"
-                             e = n++"_else"
-                             ic = n++"_ifcont"
-                             regt = Temp $ n++"t"
-                             rege = Temp $ n++"e"
-                             cond = Eq vc $ C 0
-                         in [(c, [], CondJump cond t e),
-                             (t, [Assign regt $ CIR.V vt], Jump ic),
-                             (e, [Assign rege $ CIR.V ve], Jump ic),
-                             (ic, [Assign reg $ Phi [(t, R regt), (e, R rege)]], Return $ R reg)]
+putLabel :: [BasicBlock] -> Loc -> [BasicBlock]
+putLabel [] _ = []
+putLabel [(n,i,t)] l = [(n,i,Jump l)]
+putLabel (x:xs) l = x : putLabel xs l 
+
+getFreshName :: StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Name
+getFreshName = do (k, _, _) <- get
+                  modify (\(k, i, l) -> (k+1, i, l))
+                  return ("__c_" ++ show k)
                                
 mkBlocks :: Ir -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Val
-mkBlocks (IrVar n) = return $ G n
+mkBlocks (IrVar n) = if (isPrefixOf "__" n) then return $ R $ Temp n else return $ G n
 mkBlocks (IrConst (CNat n)) = return $ C n
 mkBlocks (IrCall i is) = do v <- mkBlocks i
                             vs <- mapM mkBlocks is -- ???
-                            f <- getFreshName "call"
-                            tell $ mkCallBlocks f v vs
+                            f <- getFreshName
+                            let reg = Temp f
+                            modify (\(k, i, l) -> (k, i ++ [Assign reg $ Call v vs], l))
                             return $ R (Temp f)
 mkBlocks (IrBinaryOp o t u) = do vt <- mkBlocks t
                                  vu <- mkBlocks u
-                                 f <- getFreshName "binop"
+                                 f <- getFreshName
                                  let reg = Temp f
                                  modify (\(k, i, l) -> (k, i ++ [Assign reg $ BinOp o vt vu], l))
                                  return $ R reg
-mkBlocks (IrLet n d a) = undefined
+mkBlocks (IrUnaryOp o t) = do vt <- mkBlocks t
+                              f <- getFreshName
+                              let reg = Temp f
+                              modify (\(k, i, l) -> (k, i ++ [Assign reg $ UnOp o vt], l))
+                              return $ R reg
+mkBlocks (IrLet n d a) = do vd <- mkBlocks d
+                            let re1 = Temp n
+                            modify (\(k, i, l) -> (k, i ++ [Assign re1 $ CIR.V vd], l))
+                            va <- mkBlocks a
+                            f <- getFreshName
+                            let reg = Temp f
+                            modify (\(k, i, l) -> (k, i ++ [Assign reg $ CIR.V va], l))
+                            return $ R reg
 mkBlocks (IrIfZ c t e) = do vc <- mkBlocks c
+                            f <- getFreshName
+                            let bt = f++"_then"
+                                be = f++"_else"
+                                bc = f++"_cont"
+                                rvt = Temp $ f++"_t"
+                                rve = Temp $ f++"_e"
+                                reg = Temp f
+                            (_,i1,l1) <- get
+                            tell $ [(l1, i1, CondJump (Eq vc $ C 0) bt be)]
+                            modify (\(k, i, l) -> (k, [], l))
                             vt <- mkBlocks t
+                            (_,i2,l2) <- get
+                            let di2 = [Assign rvt $ CIR.V vt]
+                            tell $ [(bt, i2 ++ di2, Jump bc)]
+                            modify (\(k, i, l) -> (k, [], l))
                             ve <- mkBlocks e
-                            f <- getFreshName "ifz"
-                            tell $ mkIfZBlocks f vc vt ve
-                            return $ R (Temp f)
-mkBlocks (Lang.MkClosure n is) = undefined
+                            (_,i3,l3) <- get
+                            let di3 = [Assign rve $ CIR.V ve]
+                            tell $ [(be, i3 ++ di3, Jump bc)]
+                            modify (\(k, i, l) -> (k, [Assign reg $ Phi [(bt, R rvt), (be, R rve)]] , bc))
+                            return $ R reg
+mkBlocks (IrMkClosure n is) = do vs <- mapM mkBlocks is
+                                 f <- getFreshName
+                                 let reg = Temp f
+                                 modify (\(k, i, l) -> (k, i ++ [Assign reg $ MkClosure n vs], l))
+                                 return $ R (Temp f)
 mkBlocks (IrAccess i n) = do v <- mkBlocks i
-                             f <- getFreshName "access"
-                             tell $ mkAccessBlocks f v n
+                             f <- getFreshName
+                             let reg = Temp f
+                             modify (\(k, i, l) -> (k, i ++ [Assign reg $ Access v n], l))
                              return $ R (Temp f)
 
-mkInstrMain :: Int -> IrDecl -> Writer [BasicBlock] (Int, Name, [Inst], Val)
-mkInstrMain k (IrVal n ir) = do let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks ir) (k, [], n))
-                                tell bs
-                                return (k', l', i', v)
+mkInstrMain :: Int -> Ir -> Loc -> [Inst] -> Writer [BasicBlock] (Int, Name, [Inst], Val)
+mkInstrMain k ir l i = do let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks ir) (k, i, l))
+                          tell $ putLabel bs l'
+                          return (k', l', i', v)
       
-mkPcfMain :: Int -> [IrDecl] -> [BasicBlock]
-mkPcfMain _ [] = []
-mkPcfMain k (x:xs) = let ((k', l, i, v), bs) = runWriter $ mkInstrMain k x
-                         nl = getLabel xs
-                         sb = (l, i ++ [Store l $ CIR.V v], Jump nl)
-                     in bs ++ [sb] ++ mkPcfMain k' xs
+mkPcfMain :: Int -> [IrDecl] -> Loc -> [Inst] -> [BasicBlock]
+mkPcfMain k [] l i = [(l,i, Return $ C 0)]
+mkPcfMain k (x:xs) lv instr = let (IrVal n ir) = x
+                                  ((k', l, i, v), bs) = runWriter $ mkInstrMain k ir lv instr
+                                  i' = i ++ [Store n $ CIR.V v]
+                              in bs ++ mkPcfMain k' xs l i'
       
 rcFun :: Name -> [Name] -> Ir -> Int -> (CanonFun, Int)
-rcFun n a ir i = let ((v , i') , bs) = runWriter (runStateT (mkBlocks ir) (i, [], n))
-                     cf = (n, a, bs)
-                 in undefined -- (cf, i')
-      
-runCanon :: [IrDecl] -> CanonProg
-runCanon is = CanonProg $ rc [] is 0 -- en el primer argumento de rc llevamos las IrVal para despues construir pcfmain
+rcFun n a ir i = let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks ir) (i, [], n++"b"))
+                     reg = Temp $ n++"_reg"
+                     b = (l', i' ++ [Assign reg $ CIR.V v], Return $ R reg)
+                     cf = (n, a, bs++[b])
+                 in (cf, k')
 
 rc :: [IrDecl] -> [IrDecl] -> Int -> [Either CanonFun CanonVal]
-rc gs [] i = [ Left ("pcfmain", [], mkPcfMain i gs) ]
---rc gs p@[IrVal n _] i = let (is, bs) = runWriter $ mkInstrMain i (gs++p)
---                        in [ Left ("pcfmain", [], bs++[("entry", is, Return $ G n)] ) ]
+rc ys []     i = [ Left ("pcfmain", [], mkPcfMain i (reverse ys) "entry" []) ]
 rc ys (x:xs) i = case x of
                     IrFun n _ a ir -> let (cf, i') = rcFun n a ir i
                                       in (Left $ cf) : rc ys xs i'
                     IrVal n _      -> (Right n) : rc (x:ys) xs i
+
+runCanon :: [IrDecl] -> CanonProg
+runCanon is = CanonProg $ rc [] is 0
