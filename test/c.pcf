@@ -1,0 +1,2 @@
+let x : Nat = ifz 0 then (ifz 1 then 2 else 3) else (ifz 1 then 4 else 5)
+let _ : Nat = print x
