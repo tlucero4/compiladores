@@ -29,6 +29,7 @@ dependencies:
 - binary
 - bytestring
 - llvm-hs-pure
+- llvm-hs-pretty
 
 library:
   source-dirs: src
@@ -51,6 +52,7 @@ executables:
     - optparse-applicative
     - binary
     - bytestring
+    - text
 
 tests:
   compiladores-test:
