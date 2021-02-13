@@ -6,7 +6,7 @@ import Data.List
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 
-getFreshName :: Name -> StateT Int (Writer [IrDecl]) Name
+getFreshName :: Monad m => Name -> StateT Int m Name
 getFreshName n = do i <- get
                     modify (+1)
                     return ("__" ++ n ++ show i)
@@ -37,7 +37,7 @@ closureConvert (IfZ _ c t u) = do ccc <- closureConvert c
 closureConvert (Let _ n _ t u) = do cn <- getFreshName n
                                     cct <- closureConvert t
                                     ccu <- closureConvert (open cn u)
-                                    return (IrLet n cct ccu)
+                                    return (IrLet cn cct ccu)
 closureConvert (App _ f x) = do  ccf <- closureConvert f
                                  ccx <- closureConvert x
                                  return (IrCall (IrAccess ccf 0) [ccf,ccx])

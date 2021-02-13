@@ -81,7 +81,7 @@ mkBlocks :: Ir -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Val
 mkBlocks (IrVar n) = if (isPrefixOf "__" n) then return $ R $ Temp n else return $ G n
 mkBlocks (IrConst (CNat n)) = return $ C n
 mkBlocks (IrCall i is) = do v <- mkBlocks i
-                            vs <- mapM mkBlocks is -- ???
+                            vs <- mapM mkBlocks is
                             f <- getFreshName
                             let reg = Temp f
                             modify (\(k, i, l) -> (k, i ++ [Assign reg $ Call v vs], l))
@@ -98,34 +98,34 @@ mkBlocks (IrUnaryOp o t) = do vt <- mkBlocks t
                               modify (\(k, i, l) -> (k, i ++ [Assign reg $ UnOp o vt], l))
                               return $ R reg
 mkBlocks (IrLet n d a) = do vd <- mkBlocks d
-                            let re1 = Temp n
-                            modify (\(k, i, l) -> (k, i ++ [Assign re1 $ CIR.V vd], l))
+                            let bnd = Temp n
+                            modify (\(k, i, l) -> (k, i ++ [Assign bnd $ CIR.V vd], l))
                             va <- mkBlocks a
                             f <- getFreshName
                             let reg = Temp f
                             modify (\(k, i, l) -> (k, i ++ [Assign reg $ CIR.V va], l))
                             return $ R reg
-mkBlocks (IrIfZ c t e) = do vc <- mkBlocks c
-                            f <- getFreshName
+mkBlocks (IrIfZ c t e) = do f <- getFreshName
                             let bt = f++"_then"
                                 be = f++"_else"
                                 bc = f++"_cont"
                                 rvt = Temp $ f++"_t"
                                 rve = Temp $ f++"_e"
                                 reg = Temp f
+                            vc <- mkBlocks c
                             (_,i1,l1) <- get
                             tell $ [(l1, i1, CondJump (Eq vc $ C 0) bt be)]
-                            modify (\(k, i, l) -> (k, [], l))
+                            modify (\(k, i, l) -> (k, [], bt))
                             vt <- mkBlocks t
                             (_,i2,l2) <- get
                             let di2 = [Assign rvt $ CIR.V vt]
-                            tell $ [(bt, i2 ++ di2, Jump bc)]
-                            modify (\(k, i, l) -> (k, [], l))
+                            tell $ [(l2, i2 ++ di2, Jump bc)]
+                            modify (\(k, i, l) -> (k, [], be))
                             ve <- mkBlocks e
                             (_,i3,l3) <- get
                             let di3 = [Assign rve $ CIR.V ve]
-                            tell $ [(be, i3 ++ di3, Jump bc)]
-                            modify (\(k, i, l) -> (k, [Assign reg $ Phi [(bt, R rvt), (be, R rve)]] , bc))
+                            tell $ [(l3, i3 ++ di3, Jump bc)]
+                            modify (\(k, i, l) -> (k, [Assign reg $ Phi [(l2, R rvt), (l3, R rve)]] , bc))
                             return $ R reg
 mkBlocks (IrMkClosure n is) = do vs <- mapM mkBlocks is
                                  f <- getFreshName
