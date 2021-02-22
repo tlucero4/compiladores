@@ -35,6 +35,7 @@ import CEK ( eval )
 import PPrint ( pp , ppTy )
 import MonadPCF
 import TypeChecker ( tc, tcDecl )
+import Optimizer ( optimize )
 import Bytecompile
 import Closure (runCC)
 import CIR (runCanon)
@@ -103,8 +104,12 @@ ccFile (f:_) = do
                          hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
                          return "")
     sdecls <- parseIO filename sprogram x
-    decls <- bc_elab_sdecl sdecls
+    decls' <- bc_elab_sdecl sdecls
+    mapM_ tcDecl decls'
     printPCF "\n\n------------- DECLS:\n"
+    printPCF $ show decls'
+    decls <- optimize decls'
+    printPCF "\n\n------------- OPTIMIZED:\n"
     printPCF $ show decls
     let irdecls = runCC decls 0
     printPCF "\n\n------------- IRDECLS:\n"

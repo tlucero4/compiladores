@@ -44,13 +44,13 @@ data STy =
 type Name = String
 
 data Const = CNat Int
-  deriving Show
+  deriving (Eq,Show)
 
-data UnaryOp = Succ | Pred | Print -- print no usado
-  deriving Show
+data UnaryOp = Succ | Pred | Print
+  deriving (Eq,Show)
   
 data BinaryOp = Add | Sub | Prod -- prod no usado
-  deriving Show
+  deriving (Eq,Show)
 
 -- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
 
@@ -119,6 +119,19 @@ data Var =
     Bound !Int
   | Free Name
   deriving Show
+
+instance Eq Term where
+   (==) (V _ (Bound n)) (V _ (Bound m)) = (n == m) -- ???
+   (==) (V _ (Free n)) (V _ (Free m)) = (n == m) -- ???
+   (==) (Const c) (Const d) = (c == d)
+   (==) (Lam _ n _ t) (Lam _ m _ u) = (n == m) && (t == u)
+   (==) (App _ t u) (App _ y o) = (t == y) && (u == o)
+   (==) (BinaryOp _ o t u) (BinaryOp _ o' t' u') = (o == o') && (t == t') && (u == u')
+   (==) (UnaryOp _ o t) (UnaryOp _ o' t') = if (o == Print) then False else (o == o') && (t == t') && (u == u')
+   (==) (Fix _ f _ x _ t) (Lam _ g _ y _ u) = (f == g) && (x == y) && (t == u)
+   (==) (IfZ _ c t e) (IfZ _ d u i) = (c == d) && (t == u) && (e == i)
+   (==) (Let _ _ _ c t) (Let _ _ _ d u) = (c == t) && (d == u)
+   (==) _ _ = False
 
 -- | Obtiene la info en la raíz del término.
 getInfo :: Tm info var -> info
