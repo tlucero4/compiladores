@@ -4,25 +4,22 @@ module Optimizer (
    ) where
 
 import Lang
-import Subst
+import MonadPCF
 import Control.Monad.State.Lazy
-
-#define NUM_CYCLES 3
-#define MAX_OCURR_INLINE 2
+import Control.Monad.Writer.Lazy
 
 apply2Term :: (Term -> Term) -> TDecl Term -> TDecl Term
 apply2Term f (TDecl p n t b) = TDecl p n t $ f b
 
-optimize :: MonadPCF => [TDecl Term] -> [TDecl Term]
-optimize = optimizeCycle NUM_CYCLES
+optimize :: MonadPCF m => [TDecl Term] -> m [TDecl Term]
+optimize = optimizeCycle 1
                      
-optimizeCycle :: MonadPCF => Int -> [TDecl Term] -> [TDecl Term]
-optimizeCycle 0 ts = ts
+optimizeCycle :: MonadPCF m => Int -> [TDecl Term] -> m [TDecl Term]
+optimizeCycle 0 ts = return ts
 optimizeCycle n ts = do let ts' = map (apply2Term arithCalc) ts
                             ts'' = map (apply2Term commonSubExpr) ts'
-                        ts'''   <- inlineFun ts''
-                        nts     <- optimizeCycle (n-1) ts'''
-                        return nts
+                        ts''' <- inlineFun ts''
+                        optimizeCycle (n-1) ts'''
                         
 
 -- Reducing Arithmetic Expressions:
@@ -33,7 +30,7 @@ arithCalc (App i t u) = App i (arithCalc t) (arithCalc u)
 arithCalc (Fix i f fty n nty t) = Fix i f fty n nty (arithCalc t)
 arithCalc (IfZ i c t e) = IfZ i (arithCalc c) (arithCalc t) (arithCalc e)
 arithCalc (Let i n ty d t) = Let i n ty (arithCalc d) (arithCalc t)
-arithCalc (UnaryOp i o t = UnaryOp i o (arithCalc t)
+arithCalc (UnaryOp i o t) = UnaryOp i o (arithCalc t)
 arithCalc (BinaryOp i o t u) = case (t, u) of
                                     (Const i (CNat n), Const _ (CNat m)) -> case o of
                                                                                  Add -> Const i (CNat $ n + m)
@@ -48,33 +45,64 @@ commonSubExpr :: Term -> Term
 commonSubExpr t = t -- Hacer
 
 -- Creating In Line Functions:
+                                          
+calcSizeOfFun :: Term -> Int -- The Heuristic
+calcSizeOfFun (Lam _ _ _ t) = 1 + calcSizeOfFun t
+calcSizeOfFun (App _ t u) = 1 + calcSizeOfFun t + calcSizeOfFun u
+calcSizeOfFun (Fix _ _ _ _ _ t) = 2 + calcSizeOfFun t
+calcSizeOfFun (IfZ _ c t e) = calcSizeOfFun c + calcSizeOfFun t + calcSizeOfFun e
+calcSizeOfFun (Let _ _ _ d t) = calcSizeOfFun d + calcSizeOfFun t
+calcSizeOfFun (UnaryOp _ _ t) = calcSizeOfFun t
+calcSizeOfFun (BinaryOp _ _ t u) = calcSizeOfFun t + calcSizeOfFun u
+calcSizeOfFun t = 1
 
-calcTable :: Term -> StateT [Name, Int] ()
-calcTable (Lam _ _ _ t) = calcTable t
-calcTable (App _ t u) = case t of
-                             V (Free n) -> do modify -- buscar n en la tabla y sumarle 1 a su valor
-                                              calcTable u
-                             otherwise  -> calcTable t
-                                           calcTable u
-calcTable (Fix _ _ _ _ _ t) = calcTable t
-calcTable (IfZ _ c t e) = do calcTable c
-                             calcTable t
-                             calcTable e
-calcTable (Let _ _ _ d t) = do calcTable d
-                                calcTable t
-calcTable (UnaryOp _ _ t) = calcTable t
-calcTable (BinaryOp _ _ t u) = do calcTable t
-                                  calcTable u
+getFuns :: [TDecl Term] -> Writer [(Name, Term, Int)] ()
+getFuns [] = return ()
+getFuns (x:xs) = case (tdeclType x) of
+                      FunTy _ _ -> do let s = calcSizeOfFun (tdeclBody x)
+                                      tell [(tdeclName x, tdeclBody x, s)]
+                                      getFuns xs  
+                      _         -> getFuns xs
 
-tableOfApps :: [TDecl Term] -> StateT [Name, Int] ()
-tableOfApps [] = return ()
-tableOfApps ((TDecl _ _ _ b):xs) = do calcTable b
-                                      tableOfApps xs
+deleteFun :: Name -> [TDecl Term] -> [TDecl Term]
+deleteFun _ [] = []
+deleteFun n (x:xs) = if (n == tdeclName x) then xs
+                                           else x : (deleteFun n xs)
 
-inlineFun :: MonadPCF => [TDecl Term] -> [TDecl Term]
-inlineFun ts = do initTable <- [xxx] -- crear tabla inicial con cada nombre de funcion y valor 0
-                  (table, _) <- runStateT (tableOfApps ts) initTable
-                  -- filtrar tabla para aquellas aplicaciones que se hagan menos de MAX_OCURR_INLINE veces
-                  -- para aquellas funciones que quedaron filtradas, reemplazar su App en el codigo por la definicion
+substLam :: Term -> Term -> Term
+substLam r (App i t u) = App i (substLam r t) (substLam r u)
+substLam r (Lam i x ty t) = Lam i x ty (substLam r t)
+substLam r (Fix i f fty x xty t) =Fix i f fty x xty (substLam r t)
+substLam r (IfZ i c t e) = IfZ i (substLam r c) (substLam r t) (substLam r e)
+substLam r (Let i x ty d t) = Let i x ty (substLam r d) (substLam r t)
+substLam r (UnaryOp i o t) = UnaryOp i o (substLam r t)
+substLam r (BinaryOp i o t u) = BinaryOp i o (substLam r t) (substLam r u)
+substLam r (V i (Bound 0)) = r
+substLam _ t = t
+
+subst :: Term -> Term -> Term
+subst term@(Fix i f fty x xty t) u = term
+subst (Lam _ _ _ t) u = substLam t u
+
+replaceFun :: Name -> Term -> Term -> Term
+replaceFun n r (App i t u) = case t of
+                                  V _ (Free n) -> subst r u
+                                  _            -> App i (replaceFun n r t) (replaceFun n r u)
+replaceFun n r (Lam i x ty t) = Lam i x ty (replaceFun n r t)
+replaceFun n r (Fix i f fty x xty t) =Fix i f fty x xty (replaceFun n r t)
+replaceFun n r (IfZ i c t e) = IfZ i (replaceFun n r c) (replaceFun n r t) (replaceFun n r e)
+replaceFun n r (Let i x ty d t) = Let i x ty (replaceFun n r d) (replaceFun n r t)
+replaceFun n r (UnaryOp i o t) = UnaryOp i o (replaceFun n r t)
+replaceFun n r (BinaryOp i o t u) = BinaryOp i o (replaceFun n r t) (replaceFun n r u)
+replaceFun _ _ t = t
+
+doInline :: [TDecl Term] -> (Name, Term, Int) -> [TDecl Term]
+doInline ts (n, t, i) = if i < 5 then map (apply2Term (replaceFun n t)) (deleteFun n ts)
+                                 else ts
+                      
+inlineFun :: MonadPCF m => [TDecl Term] -> m [TDecl Term]
+inlineFun ts = do let (_, table) = runWriter (getFuns ts)
+                      ts' = foldl doInline ts table  
+                  return ts'
                   
 ---------

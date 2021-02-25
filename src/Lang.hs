@@ -119,7 +119,7 @@ data Var =
     Bound !Int
   | Free Name
   deriving Show
-
+{-
 instance Eq Term where
    (==) (V _ (Bound n)) (V _ (Bound m)) = (n == m) -- ???
    (==) (V _ (Free n)) (V _ (Free m)) = (n == m) -- ???
@@ -132,7 +132,7 @@ instance Eq Term where
    (==) (IfZ _ c t e) (IfZ _ d u i) = (c == d) && (t == u) && (e == i)
    (==) (Let _ _ _ c t) (Let _ _ _ d u) = (c == t) && (d == u)
    (==) _ _ = False
-
+   -}
 -- | Obtiene la info en la raíz del término.
 getInfo :: Tm info var -> info
 getInfo (V i _) = i

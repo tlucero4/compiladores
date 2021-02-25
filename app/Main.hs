@@ -89,10 +89,10 @@ go (Run,files) = do
     runPCF (byterunFiles files)
     return ()
 
-ccShow :: (MonadPCF m, MonadMask m) => [IrDecl] -> m ()
-ccShow [] = return ()
-ccShow (x:xs) = do printPCF (show x)
-                   ccShow xs
+showL :: Show a => (MonadPCF m, MonadMask m) => [a] -> m ()
+showL [] = return ()
+showL (x:xs) = do printPCF (show x)
+                  showL xs
     
 ccFile ::  (MonadPCF m, MonadMask m) => [String] -> m ()
 ccFile [] = return ()
@@ -107,13 +107,13 @@ ccFile (f:_) = do
     decls' <- bc_elab_sdecl sdecls
     mapM_ tcDecl decls'
     printPCF "\n\n------------- DECLS:\n"
-    printPCF $ show decls'
+    showL decls'
     decls <- optimize decls'
     printPCF "\n\n------------- OPTIMIZED:\n"
-    printPCF $ show decls
+    showL decls
     let irdecls = runCC decls 0
     printPCF "\n\n------------- IRDECLS:\n"
-    ccShow irdecls
+    showL irdecls
     let canon = runCanon irdecls
         llvm = toStrict $ ppllvm $ codegen canon
     printPCF "\n\n------------- CANON:\n"
