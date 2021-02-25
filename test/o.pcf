@@ -1,0 +1,5 @@
+let mas5 (n : Nat) : Nat = n + 5
+let rec mult (m n : Nat) : Nat = ifz n then n else m + (mult m (n - 1))
+let x : Nat = mas5 3
+let y : Nat = mult x 2
+let z : Nat = print y
