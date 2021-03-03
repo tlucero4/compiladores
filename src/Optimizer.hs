@@ -12,7 +12,7 @@ apply2Term :: (Term -> Term) -> TDecl Term -> TDecl Term
 apply2Term f (TDecl p n t b) = TDecl p n t $ f b
 
 optimize :: MonadPCF m => [TDecl Term] -> m [TDecl Term]
-optimize = optimizeCycle 1
+optimize = optimizeCycle 2
                      
 optimizeCycle :: MonadPCF m => Int -> [TDecl Term] -> m [TDecl Term]
 optimizeCycle 0 ts = return ts
@@ -22,13 +22,16 @@ optimizeCycle n ts = do let ts' = map (apply2Term arithCalc) ts
                         optimizeCycle (n-1) ts'''
                         
 
--- Reducing Arithmetic Expressions:
+-- Reducing Arithmetic Expressions (and Dead Code Elimination):
 
 arithCalc :: Term -> Term
 arithCalc (Lam i n ty t) = Lam i n ty (arithCalc t)
 arithCalc (App i t u) = App i (arithCalc t) (arithCalc u)
 arithCalc (Fix i f fty n nty t) = Fix i f fty n nty (arithCalc t)
-arithCalc (IfZ i c t e) = IfZ i (arithCalc c) (arithCalc t) (arithCalc e)
+arithCalc (IfZ i c t e) = case c of -- DCE
+                               Const _ (CNat 0) -> (arithCalc t)
+                               Const _ (CNat n) -> (arithCalc e)
+                               _ -> IfZ i (arithCalc c) (arithCalc t) (arithCalc e)
 arithCalc (Let i n ty d t) = Let i n ty (arithCalc d) (arithCalc t)
 arithCalc (UnaryOp i o t) = UnaryOp i o (arithCalc t)
 arithCalc (BinaryOp i o t u) = case (t, u) of
@@ -36,7 +39,7 @@ arithCalc (BinaryOp i o t u) = case (t, u) of
                                                                                  Add -> Const i (CNat $ n + m)
                                                                                  Sub -> Const i (CNat $ n - m) -- Arreglar resta n < m
                                                                                  Prod -> Const i (CNat $ n * m)
-                                    otherwise                            -> BinaryOp i o (arithCalc t) (arithCalc u)
+                                    _                                    -> BinaryOp i o (arithCalc t) (arithCalc u)
 arithCalc t = t
 
 -- Reducing Common Subexpressions:
@@ -69,25 +72,30 @@ deleteFun _ [] = []
 deleteFun n (x:xs) = if (n == tdeclName x) then xs
                                            else x : (deleteFun n xs)
 
-substLam :: Term -> Term -> Term
+substLam :: [Term] -> Term -> Term
 substLam r (App i t u) = App i (substLam r t) (substLam r u)
-substLam r (Lam i x ty t) = Lam i x ty (substLam r t)
-substLam r (Fix i f fty x xty t) =Fix i f fty x xty (substLam r t)
+substLam r (Lam i x ty t) = substLam r t
+substLam r (Fix i f fty x xty t) = Fix i f fty x xty (substLam r t)
 substLam r (IfZ i c t e) = IfZ i (substLam r c) (substLam r t) (substLam r e)
 substLam r (Let i x ty d t) = Let i x ty (substLam r d) (substLam r t)
 substLam r (UnaryOp i o t) = UnaryOp i o (substLam r t)
 substLam r (BinaryOp i o t u) = BinaryOp i o (substLam r t) (substLam r u)
-substLam r (V i (Bound 0)) = r
+substLam r (V i (Bound n)) = r !! n
 substLam _ t = t
 
-subst :: Term -> Term -> Term
-subst term@(Fix i f fty x xty t) u = term
-subst (Lam _ _ _ t) u = substLam t u
+replaceApp :: Term -> Name -> [Term] -> Maybe [Term]
+replaceApp (App i t a) n as = replaceApp t n (a:as)
+replaceApp (V _ (Free n')) n as = if (n == n') then Just as
+                                               else Nothing
+replaceApp _ _ _ = Nothing
 
 replaceFun :: Name -> Term -> Term -> Term
-replaceFun n r (App i t u) = case t of
-                                  V _ (Free n) -> subst r u
-                                  _            -> App i (replaceFun n r t) (replaceFun n r u)
+replaceFun n r x@(App i t a) = case (replaceApp t n [a]) of
+                                  Just as -> case r of
+                                                  Lam _ _ _ t' -> substLam (reverse as) t'
+                                                  Fix _ _ _ _ _ t' -> undefined
+                                                  _ -> undefined
+                                  Nothing -> App i (replaceFun n r t) (replaceFun n r a)
 replaceFun n r (Lam i x ty t) = Lam i x ty (replaceFun n r t)
 replaceFun n r (Fix i f fty x xty t) =Fix i f fty x xty (replaceFun n r t)
 replaceFun n r (IfZ i c t e) = IfZ i (replaceFun n r c) (replaceFun n r t) (replaceFun n r e)
@@ -97,7 +105,7 @@ replaceFun n r (BinaryOp i o t u) = BinaryOp i o (replaceFun n r t) (replaceFun 
 replaceFun _ _ t = t
 
 doInline :: [TDecl Term] -> (Name, Term, Int) -> [TDecl Term]
-doInline ts (n, t, i) = if i < 5 then map (apply2Term (replaceFun n t)) (deleteFun n ts)
+doInline ts (n, t, i) = if i < 12 then map (apply2Term (replaceFun n t)) ts
                                  else ts
                       
 inlineFun :: MonadPCF m => [TDecl Term] -> m [TDecl Term]
