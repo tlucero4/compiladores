@@ -35,11 +35,15 @@ arithCalc (IfZ i c t e) = case c of -- DCE
 arithCalc (Let i n ty d t) = Let i n ty (arithCalc d) (arithCalc t)
 arithCalc (UnaryOp i o t) = UnaryOp i o (arithCalc t)
 arithCalc (BinaryOp i o t u) = case (t, u) of
-                                    (Const i (CNat n), Const _ (CNat m)) -> case o of
+                                   (Const i (CNat n), Const _ (CNat m)) -> case o of
                                                                                  Add -> Const i (CNat $ n + m)
-                                                                                 Sub -> Const i (CNat $ n - m) -- Arreglar resta n < m
-                                                                                 Prod -> Const i (CNat $ n * m)
-                                    _                                    -> BinaryOp i o (arithCalc t) (arithCalc u)
+                                                                                 Sub -> | n > m     = Const i (CNat $ n - m)
+                                                                                        | otherwise = Const i (CNat 0)
+                                                                                 Prod -> | n == 0 || m == 0 = Const i (CNat 0)
+                                                                                         | otherwise        = Const i (CNat $ n * m)
+                                   _                                    -> let t' = arithCalc t
+                                                                               u' = arithCalc u
+                                                                           in BinaryOp i o t' u'
 arithCalc t = t
 
 -- Reducing Common Subexpressions:
