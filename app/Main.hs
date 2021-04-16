@@ -103,24 +103,27 @@ ccFile (f:_) = do
                (\e -> do let err = show (e :: IOException)
                          hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
                          return "")
-    sdecls <- parseIO filename sprogram x
-    decls' <- bc_elab_sdecl sdecls
-    mapM_ tcDecl decls'
-    printPCF "\n\n------------- DECLS:\n"
-    showL decls'
-    decls <- optimize decls'
-    printPCF "\n\n------------- OPTIMIZED:\n"
-    showL decls
-    let irdecls = runCC decls 0
-    printPCF "\n\n------------- IRDECLS:\n"
-    showL irdecls
-    let canon = runCanon irdecls
-        llvm = toStrict $ ppllvm $ codegen canon
-    printPCF "\n\n------------- CANON:\n"
-    printPCF $ show canon
-    liftIO $ TIO.writeFile (f++".ll") llvm
-    printPCF ("Archivo "++f++".ll creado.\n")
-    return ()
+    case runP sprogram x filename of
+         Left e -> printPCF ("Error de parseo: "++ show e)
+         Right sdcls -> do  printPCF "Archivo parseado"
+                            decls' <- bc_elab_sdecl sdcls
+                            printPCF "Sintactic Sugar eliminada"
+                            mapM_ tcDecl decls'
+                            printPCF "\n\n------------- DECLS:\n"
+                            showL decls'
+                            decls <- optimize decls'
+                            printPCF "\n\n------------- OPTIMIZED:\n"
+                            showL decls
+                            let irdecls = runCC decls 0
+                            printPCF "\n\n------------- IRDECLS:\n"
+                            showL irdecls
+                            let canon = runCanon irdecls
+                                llvm = toStrict $ ppllvm $ codegen canon
+                            printPCF "\n\n------------- CANON:\n"
+                            printPCF $ show canon
+                            liftIO $ TIO.writeFile (f++".ll") llvm
+                            printPCF ("Archivo "++f++".ll creado.\n")
+                            return ()
     
 bytecompileFiles :: (MonadPCF m, MonadMask m) => [String] -> Bool -> m ()
 bytecompileFiles [] _       = return ()
