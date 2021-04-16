@@ -4,6 +4,7 @@ module Optimizer (
    ) where
 
 import Lang
+import Common (Pos(NoPos))
 import MonadPCF
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
@@ -34,16 +35,14 @@ arithCalc (IfZ i c t e) = case c of -- DCE
                                _ -> IfZ i (arithCalc c) (arithCalc t) (arithCalc e)
 arithCalc (Let i n ty d t) = Let i n ty (arithCalc d) (arithCalc t)
 arithCalc (UnaryOp i o t) = UnaryOp i o (arithCalc t)
-arithCalc (BinaryOp i o t u) = case (t, u) of
-                                   (Const i (CNat n), Const _ (CNat m)) -> case o of
+arithCalc (BinaryOp i o t u) = let t' = arithCalc t
+                                   u' = arithCalc u
+                               in case (t', u') of
+                                    (Const i (CNat n), Const _ (CNat m)) -> case o of
                                                                                  Add -> Const i (CNat $ n + m)
-                                                                                 Sub -> | n > m     = Const i (CNat $ n - m)
-                                                                                        | otherwise = Const i (CNat 0)
-                                                                                 Prod -> | n == 0 || m == 0 = Const i (CNat 0)
-                                                                                         | otherwise        = Const i (CNat $ n * m)
-                                   _                                    -> let t' = arithCalc t
-                                                                               u' = arithCalc u
-                                                                           in BinaryOp i o t' u'
+                                                                                 Sub -> if (n > m) then Const i (CNat $ n - m) else Const i (CNat 0)
+                                                                                 Prod -> if (n == 0 || m == 0) then Const i (CNat 0) else Const i (CNat $ n * m)
+                                    _                                    -> BinaryOp i o t' u'
 arithCalc t = t
 
 -- Reducing Common Subexpressions:
@@ -53,7 +52,7 @@ commonSubExpr t = t -- Hacer
 
 -- Creating In Line Functions:
 
-getFreshName :: StateT Int Name
+getFreshName :: State Int Name
 getFreshName = do i <- get
                   modify (+1)
                   return ("__nv" ++ show i)
@@ -92,13 +91,13 @@ substLam r k (BinaryOp i o t u) = BinaryOp i o (substLam r k t) (substLam r k u)
 substLam r k t@(V i (Bound n)) = if (n == k) then r else t
 substLam _ _ t = t
 
-substLamR :: Int -> [Term] ->  Term -> StateT Int Term
-substLamR k [] t = ?
+substLamR :: Int -> [Term] ->  Term -> State Int Term
+substLamR k [] t = return t
 substLamR k (x:xs) t = case x of
                             V _ _ -> substLamR (k+1) xs (substLam x k t)
                             Const _ _ -> substLamR (k+1) xs (substLam x k t)
                             t' ->  do fr <- getFreshName
-                                      return $ substLamR (k+1) xs (Let NoPos fr ty x $ substLam (V NoPos (Free fr)) k t)
+                                      substLamR (k+1) xs (Let NoPos fr NatTy x $ substLam (V NoPos (Bound 0)) k t)
 
 
 replaceApp :: Term -> Name -> [Term] -> Maybe [Term]
@@ -110,7 +109,8 @@ replaceApp _ _ _ = Nothing
 replaceFun :: Name -> Term -> Term -> Term
 replaceFun n r x@(App i t a) = case (replaceApp t n [a]) of
                                   Just as -> case r of
-                                                  Lam _ _ _ t' -> runStateT (substLamR 0 (reverse as) t') 0
+                                                  Lam _ _ _ t' -> let (ft, _) = runState (substLamR 0 (reverse as) t') 0
+                                                                  in ft
                                                   Fix _ _ _ _ _ t' -> undefined
                                                   _ -> undefined
                                   Nothing -> App i (replaceFun n r t) (replaceFun n r a)
@@ -123,7 +123,7 @@ replaceFun n r (BinaryOp i o t u) = BinaryOp i o (replaceFun n r t) (replaceFun 
 replaceFun _ _ t = t
 
 doInline :: [TDecl Term] -> (Name, Term, Int) -> [TDecl Term]
-doInline ts (n, t, i) = if i < 12 then (apply2Term (replaceFun n t)) ts
+doInline ts (n, t, i) = if i < 12 then map (apply2Term (replaceFun n t)) ts
                                   else ts
                       
 inlineFun :: MonadPCF m => [TDecl Term] -> m [TDecl Term]
