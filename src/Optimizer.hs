@@ -5,7 +5,7 @@ module Optimizer (
 
 import Lang
 import Common (Pos(NoPos))
-import Subst (open)
+import Subst (closeN)
 import MonadPCF
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
@@ -91,26 +91,25 @@ substLam r k (App i t u) = App i (substLam r k t) (substLam r k u)
 substLam r k (Lam i x ty t) = Lam i x ty (substLam r k t)
 substLam r k (Fix i f fty x xty t) = Fix i f fty x xty (substLam r k t)
 substLam r k (IfZ i c t e) = IfZ i (substLam r k c) (substLam r k t) (substLam r k e)
-substLam r k (Let i x ty d t) = Let i x ty (substLam r k d) (substLam r k t)
+substLam r k (Let i x ty d t) = Let i x ty (substLam r k d) (substLam r (k+1) t)
 substLam r k (UnaryOp i o t) = UnaryOp i o (substLam r k t)
 substLam r k (BinaryOp i o t u) = BinaryOp i o (substLam r k t) (substLam r k u)
 substLam r k t@(V i (Bound n)) = if (n == k) then r else t
 substLam _ _ t = t
 
-substLamR :: Int -> Int -> [Term] ->  Term -> State Int Term
-substLamR k c [] t = return t
-substLamR k c (x:xs) t = case x of
-                            V _ _ -> let (Lam _ _ _ t') = t
-                                     in substLamR (k+1) c xs $ substLam x k t'
-                            Const _ _ -> let (Lam _ _ _ t') = t
-                                         in substLamR (k+1) c xs $ substLam x k t'
-                            t' ->  do let (Lam _ _ _ t') = t
-                                      fr <- getFreshName
-                                      it <- substLamR (k+1) (c+1) xs $ substLam (V NoPos (Bound c)) k t'
-                                      return (Let NoPos fr NatTy x it)
+substLamR :: Int -> [Name] -> [Term] ->  Term -> State Int Term
+substLamR k ns [] t = return $ closeN (reverse ns) t -- k descuenta los argumentos totales y ns acumula los nombres de los args complejos
+substLamR k ns (x:xs) (Lam _ _ _ t) = case x of
+                                        V _ _ -> substLamR (k-1) ns xs $ substLam x k t
+                                        Const _ _ -> substLamR (k-1) ns xs $ substLam x k t
+                                        _ ->  do fr <- getFreshName
+                                                 let it = substLam (V NoPos (Free fr)) k t
+                                                 ap <- substLamR (k-1) (fr:ns) xs it
+                                                 return (Let NoPos fr NatTy x ap)
+substLamR _ _ _ _ = undefined
                                       
 getArgs :: Term -> Name -> [Term] -> Maybe [Term]
-getArgs (App i t a) n as = getArgs t n (a:as)
+getArgs (App _ t a) n as = getArgs t n (a:as)
 getArgs (V _ (Free n')) n as = if (n == n') then Just as
                                             else Nothing
 getArgs _ _ _ = Nothing
@@ -118,8 +117,7 @@ getArgs _ _ _ = Nothing
 replaceFun :: Name -> Term -> Term -> Term
 replaceFun n r x@(App i t a) = case (getArgs t n [a]) of
                                   Just as -> case r of
-                                                  Lam _ _ _ _ -> let (ft, _) = runState (substLamR 0 0 (reverse as) r) 0
-                                                                  in ft
+                                                  Lam _ _ _ _ -> fst $ runState (substLamR (length as - 1) [] as r) 0
                                                   Fix _ _ _ _ _ _ -> undefined
                                                   _ -> undefined
                                   Nothing -> App i (replaceFun n r t) (replaceFun n r a)
@@ -132,12 +130,11 @@ replaceFun n r (BinaryOp i o t u) = BinaryOp i o (replaceFun n r t) (replaceFun 
 replaceFun _ _ t = t
 
 doInline :: [TDecl Term] -> (Name, Term, Int) -> [TDecl Term]
-doInline ts (n, t, i) = if i < inlineHeur then map (apply2Term (replaceFun n t)) ts
+doInline ts (n, t, i) = if i < inlineHeur then map (apply2Term (replaceFun n t)) (deleteFun n ts)
                                   else ts
                       
 inlineFun :: MonadPCF m => [TDecl Term] -> m [TDecl Term]
 inlineFun ts = do let (_, table) = runWriter (getFuns ts)
-                      ts' = foldl doInline ts table  
-                  return ts'
+                  return $ foldl doInline ts table
                   
 ---------
