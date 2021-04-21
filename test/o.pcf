@@ -1,5 +1,4 @@
-let mas5 (n : Nat) : Nat = n + 5
-let rec mult (m n : Nat) : Nat = ifz n then n else m + (mult m (n - 1))
-let x : Nat = mas5 3
-let y : Nat = mult x 2
-let z : Nat = print y
+let suma (m n s : Nat) : Nat = m + m + m + n + n + s
+let fib (n : Nat) : Nat = let x : Nat = succ n in n + x
+let anterior : Nat -> Nat = pred
+let y : Nat = print (suma (ifz 0 then 5 else 1) (fib 3) (anterior 4))
