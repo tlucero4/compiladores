@@ -83,7 +83,7 @@ go (Bytecompile, files) = do
     runPCF (bytecompileFiles files False)
     return ()
 go (Canon, files) = do
-    runPCF (ccFile files)
+    runPCF (ccFiles files)
     return ()
 go (Run,files) = do
     runPCF (byterunFiles files)
@@ -93,10 +93,20 @@ showL :: Show a => (MonadPCF m, MonadMask m) => [a] -> m ()
 showL [] = return ()
 showL (x:xs) = do printPCF (show x)
                   showL xs
+                  
+showPP :: (MonadPCF m, MonadMask m) => [TDecl Term] -> m ()
+showPP [] = return ()
+showPP ((TDecl _ n _ d):xs) = do printPCF (n++": "++pp d)
+                                 showPP xs
     
-ccFile ::  (MonadPCF m, MonadMask m) => [String] -> m ()
-ccFile [] = return ()
-ccFile (f:_) = do
+ccFiles :: (MonadPCF m, MonadMask m) => [String] -> m ()
+ccFiles [] = return ()
+ccFiles (x:xs) = do
+        catchErrors $ ccFile x
+        ccFiles xs
+    
+ccFile ::  (MonadPCF m, MonadMask m) => String -> m ()
+ccFile f = do
     printPCF ("Abriendo "++f++"...")
     let filename = reverse(dropWhile isSpace (reverse f))
     x <- liftIO $ catch (readFile filename)
@@ -105,16 +115,16 @@ ccFile (f:_) = do
                          return "")
     case runP sprogram x filename of
          Left e -> printPCF ("Error de parseo: "++ show e)
-         Right sdcls -> do  printPCF "Archivo parseado"
-                            decls' <- bc_elab_sdecl sdcls
+         Right sdecls -> do printPCF "Archivo parseado"
+                            decls <- bc_elab_sdecl sdecls
                             printPCF "Sintactic Sugar eliminada"
-                            mapM_ tcDecl decls'
+                            mapM_ tcDecl decls
                             printPCF "\n\n------------- DECLS:\n"
-                            showL decls'
-                            decls <- optimize decls'
+                            showPP decls
+                            odecls <- optimize decls
                             printPCF "\n\n------------- OPTIMIZED:\n"
-                            showL decls
-                            let irdecls = runCC decls 0
+                            showPP odecls
+                            let irdecls = runCC odecls 0
                             printPCF "\n\n------------- IRDECLS:\n"
                             showL irdecls
                             let canon = runCanon irdecls

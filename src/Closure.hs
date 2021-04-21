@@ -24,6 +24,7 @@ freshVars = filter $ isPrefixOf "__"
 
 closureConvert :: Term -> StateT Int (Writer [IrDecl]) Ir
 closureConvert (V _ (Free n)) = return (IrVar n)
+closureConvert (V _ (Bound _)) = undefined
 closureConvert (Const _ c) = return (IrConst c)
 closureConvert (BinaryOp _ o t u) = do cct <- closureConvert t
                                        ccu <- closureConvert u
