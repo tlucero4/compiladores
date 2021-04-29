@@ -1,0 +1,22 @@
+let rec prod (m n : Nat) : Nat = ifz m then 0 else n + (prod (m - 1) n)
+let rec fact (n : Nat) : Nat = ifz n then 1 else prod n (fact (n - 1))
+let _ : Nat = print (fact 5)
+#
+#
+# let mult m n :
+#   letrec mult' n' = ifz n' then 0
+#                            else m + (mult' m (pred n'))
+#   in mult' n
+#   ==
+#   let mult' = (fix mult' n' -> ifz n' then 0
+#                                       else m + (mult' m (pred n')))
+#   in mult' n
+# 
+# 
+# 
+# mult 4 6 :
+#   letrec mult' n' = ifz n' then 0
+#                            else 4 + (mult' 4 (pred n'))
+#   in mult' 6
+# 
+# 
