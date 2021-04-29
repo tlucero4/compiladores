@@ -45,6 +45,9 @@ import LLVM.Pretty (ppllvm)
 prompt :: String
 prompt = "PCF> "
 
+doOptimize :: Bool
+doOptimize = True
+
 ----------------- SECCION BYTECODE
 
 data Mode =   Interactive
@@ -121,16 +124,18 @@ ccFile f = do
                             mapM_ tcDecl decls
                             printPCF "\n\n------------- DECLS:\n"
                             showPP decls
-                            odecls <- optimize decls
+                            let odecls = if doOptimize
+                                            then optimize decls
+                                            else decls
                             printPCF "\n\n------------- OPTIMIZED:\n"
                             showPP odecls
                             let irdecls = runCC odecls 0
-                            printPCF "\n\n------------- IRDECLS:\n"
-                            showL irdecls
+                            --printPCF "\n\n------------- IRDECLS:\n"
+                            --showL irdecls
                             let canon = runCanon irdecls
                                 llvm = toStrict $ ppllvm $ codegen canon
-                            printPCF "\n\n------------- CANON:\n"
-                            printPCF $ show canon
+                            --printPCF "\n\n------------- CANON:\n"
+                            --printPCF $ show canon
                             liftIO $ TIO.writeFile (f++".ll") llvm
                             printPCF ("Archivo "++f++".ll creado.\n")
                             return ()

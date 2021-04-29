@@ -77,8 +77,9 @@ c2doc :: Const -> Doc
 c2doc (CNat n) = text (show n)
 
 binary2doc :: BinaryOp -> Doc
-binary2doc Add = text "Add"
-binary2doc Sub = text "sub"
+binary2doc Add = text "+"
+binary2doc Sub = text "-"
+binary2doc Prod = text "*"
 
 unary2doc :: UnaryOp -> Doc
 unary2doc Succ = text "succ"
@@ -127,7 +128,7 @@ t2doc at (IfZ _ c t e) =
 
 t2doc at (BinaryOp _ o t1 t2) =
   parenIf at $
-  binary2doc o <+> t2doc True t1 <+> t2doc True t2
+  t2doc True t1 <+> binary2doc o <+> t2doc True t2
   
 t2doc at (UnaryOp _ o t) =
   parenIf at $

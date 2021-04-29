@@ -49,7 +49,7 @@ data Const = CNat Int
 data UnaryOp = Succ | Pred | Print
   deriving (Eq,Show)
   
-data BinaryOp = Add | Sub | Prod -- prod no usado
+data BinaryOp = Add | Sub | Prod
   deriving (Eq,Show)
 
 -- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
