@@ -69,14 +69,15 @@ pattern FUNCTION = 4
 pattern CALL     = 5
 pattern SUM      = 6
 pattern SUB      = 7
-pattern IFZ      = 8
-pattern FIX      = 9
-pattern STOP     = 10
-pattern JUMP     = 11
-pattern SHIFT    = 12
-pattern DROP     = 13
-pattern PRINT    = 14
-pattern TAILCALL = 15
+pattern PROD     = 8
+pattern IFZ      = 9
+pattern FIX      = 10
+pattern STOP     = 11
+pattern JUMP     = 12
+pattern SHIFT    = 13
+pattern DROP     = 14
+pattern PRINT    = 15
+pattern TAILCALL = 16
 
 bct :: MonadPCF m => Term -> m Bytecode
 bct (App _ f a) = do
@@ -105,6 +106,10 @@ bc (BinaryOp _ Add t1 t2) = do
     bt1 <- bc t1
     bt2 <- bc t2
     return (bt1++bt2++[SUM])
+bc (BinaryOp _ Prod t1 t2) = do
+    bt1 <- bc t1
+    bt2 <- bc t2
+    return (bt1++bt2++[PROD])
 bc (BinaryOp _ Sub t1 t2) = do
     bt1 <- bc t1
     bt2 <- bc t2
@@ -167,11 +172,10 @@ runBC' (PRINT : cs) e s@(I n : _) = do
     printPCF ("El resultado es "++(show n))
     runBC' cs e s
 runBC' (PRINT : _) _ _ = failPCF $ "Error de ejecución: Solo se pueden imprimir naturales."
-runBC' (STOP : _) _ _ = do
-    printPCF "El programa ha finalizado.\n"
-    return ()
+runBC' (STOP : _) _ _ = return ()
 runBC' (CONST : n : cs) e s = runBC' cs e (I n : s)
 runBC' (SUM : cs) e (I n2 : I n1 : ss) = runBC' cs e (I (n1+n2) : ss)
+runBC' (PROD : cs) e (I n2 : I n1 : ss) = runBC' cs e (I (n1*n2) : ss)
 runBC' (SUB : cs) e (I n2 : I n1 : ss) = if (n1 > n2) then runBC' cs e (I (n1-n2) : ss)
                                                       else runBC' cs e (I 0 : ss)
 runBC' (ACCESS : i : cs) e ss = runBC' cs e (e!!i : ss)
@@ -188,70 +192,3 @@ runBC' (IFZ : l : cs) e (I _ : ss) = runBC' (drop l cs) e ss
 runBC' (JUMP : l : cs) e ss = runBC' (drop l cs) e ss
 runBC' (TAILCALL : cs) e (v : Fun ef cf : ss) = runBC' cf (v : ef) ss
 runBC' _ _ _ = failPCF $ "Error de ejecución: Secuencia de instrucciones inválida."
-
-
-{- Version para debugear
-runBC' :: MonadPCF m => Bytecode -> Env -> Stack -> m ()
-runBC' [] _ _ = failPCF $ "Error de compilación: No hay instrucciones."
-runBC' (PRINT : cs) e s@(I n : _) = do
-    printPCF ("El resultado es "++(show n))
-    runBC' cs e s
-runBC' (PRINT : _) _ _ = failPCF $ "Error de compilación: Solo se pueden imprimir naturales."
-runBC' (STOP : _) _ _ = do
-    printPCF "El programa ha finalizado."
-    return ()
-runBC' (CONST : n : cs) e s = do
-    printPCF ("\nACTUAL: Const "++(show n)++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show (I n:s))
-    runBC' cs e (I n : s)
-runBC' (SUCC : cs) e (I n : ss) = do
-    printPCF ("\nACTUAL: Succ"++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show (I (n+1):ss))
-    runBC' cs e (I (n+1) : ss)
-runBC' (PRED : cs) e (I n : ss) = do
-    printPCF ("\nACTUAL: Pred"++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show (I (n-1):ss))
-    runBC' cs e (I (n-1) : ss)
-runBC' (ACCESS : i : cs) e ss = do
-    printPCF ("\nACTUAL: Access"++(show i)++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show (e!!i : ss))
-    runBC' cs e (e!!i : ss)
-runBC' (CALL : cs) e (v : (Fun ef cf) : ss) = do
-    printPCF ("\nACTUAL: CALL"++", next: "++(show cf))
-    printPCF ("NEXT e: "++show (v : ef)++", NEXT s: "++show ((RA e cs) : ss))
-    runBC' cf (v : ef) ((RA e cs) : ss)
-runBC' (FUNCTION : l : cs) e ss = do
-    printPCF ("\nACTUAL: Function of length"++(show l)++", next: "++(show (drop l cs)))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show ((Fun e cs) : ss))
-    runBC' (drop l cs) e ((Fun e cs) : ss)
-runBC' (RETURN : _) _ (v : (RA e cs) : ss) = do
-    printPCF ("\nACTUAL: RETURN"++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show (v : ss))
-    runBC' cs e (v : ss)
-runBC' (FIXPOINT : l : cs) e ss = do
-    let efix = ((Fun efix cs) : e)
-    printPCF ("\nACTUAL: FIXPOINT"++", next: "++(show (drop l cs)))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show ((Fun efix cs) : ss))
-    runBC' (drop l cs) e ((Fun efix cs) : ss)
---runBC' (FIX : _) _ s@((Fun ef cf) : _) = runBC' cf ef s
-runBC' (SHIFT : cs) e (v : ss) = do
-    printPCF ("\nACTUAL: SHIFT"++", next: "++(show cs))
-    printPCF ("NEXT e: "++show (v : e)++", NEXT s: "++show ss)
-    runBC' cs (v : e) ss
-runBC' (DROP : cs) (v : e) s = do
-    printPCF ("\nACTUAL: DROP"++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show s)
-    runBC' cs e s
-runBC' (IFZ : l : cs) e (I 0 : ss) = do
-    printPCF ("\nACTUAL: IFZ con 0"++", next: "++(show cs))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show ss)
-    runBC' cs e ss
-runBC' (IFZ : l : cs) e (I _ : ss) = do
-    printPCF ("\nACTUAL: IFZ con np"++", next: "++(show (drop l cs)))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show ss)
-    runBC' (drop l cs) e ss
-runBC' (JUMP : l : cs) e ss = do
-    printPCF ("\nACTUAL: JUMP"++", next: "++(show (drop l cs)))
-    printPCF ("NEXT e: "++show e++", NEXT s: "++show ss)
-    runBC' (drop l cs) e ss
-    -}

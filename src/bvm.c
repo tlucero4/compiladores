@@ -48,14 +48,15 @@
 #define CALL     5
 #define ADD      6
 #define SUB      7
-#define IFZ      8
-#define FIX      9
-#define STOP     10
-#define JUMP     11
-#define SHIFT    12
-#define DROP     13
-#define PRINT    14
-#define TAILCALL 15
+#define PROD     8
+#define IFZ      9
+#define FIX      10
+#define STOP     11
+#define JUMP     12
+#define SHIFT    13
+#define DROP     14
+#define PRINT    15
+#define TAILCALL 16
 
 #define CHUNK 4096
 
@@ -235,6 +236,12 @@ void run(code init_c)
 				s[-1].i -= v.i;
             else
                 s[-1].i = 0;
+			break;
+		}
+
+		case PROD: {
+            value v = *--s;
+			s[-1].i *= v.i;
 			break;
 		}
 

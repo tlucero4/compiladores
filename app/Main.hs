@@ -46,9 +46,10 @@ prompt :: String
 prompt = "PCF> "
 
 doOptimize :: Bool
-doOptimize = True
+doOptimize = False
 
------------------ SECCION BYTECODE
+debug :: Bool
+debug = False
 
 data Mode =   Interactive
             | Typecheck
@@ -79,17 +80,11 @@ go :: (Mode,[FilePath]) -> IO ()
 go (Interactive,files) = do
     runPCF (runInputT defaultSettings (main' files))
     return ()
-go (Typecheck, files) = do
-    runPCF (bytecompileFiles files True)
-    return ()
-go (Bytecompile, files) = do
-    runPCF (bytecompileFiles files False)
-    return ()
-go (Canon, files) = do
-    runPCF (ccFiles files)
-    return ()
-go (Run,files) = do
+go (Run, files) = do
     runPCF (byterunFiles files)
+    return ()
+go (mode, files) = do
+    runPCF (runFiles files mode)
     return ()
 
 showL :: Show a => (MonadPCF m, MonadMask m) => [a] -> m ()
@@ -102,53 +97,16 @@ showPP [] = return ()
 showPP ((TDecl _ n _ d):xs) = do printPCF (n++": "++pp d)
                                  showPP xs
     
-ccFiles :: (MonadPCF m, MonadMask m) => [String] -> m ()
-ccFiles [] = return ()
-ccFiles (x:xs) = do
-        catchErrors $ ccFile x
-        ccFiles xs
     
-ccFile ::  (MonadPCF m, MonadMask m) => String -> m ()
-ccFile f = do
-    printPCF ("Abriendo "++f++"...")
-    let filename = reverse(dropWhile isSpace (reverse f))
-    x <- liftIO $ catch (readFile filename)
-               (\e -> do let err = show (e :: IOException)
-                         hPutStr stderr ("No se pudo abrir el archivo " ++ filename ++ ": " ++ err ++"\n")
-                         return "")
-    case runP sprogram x filename of
-         Left e -> printPCF ("Error de parseo: "++ show e)
-         Right sdecls -> do printPCF "Archivo parseado"
-                            decls <- bc_elab_sdecl sdecls
-                            printPCF "Sintactic Sugar eliminada"
-                            mapM_ tcDecl decls
-                            printPCF "\n\n------------- DECLS:\n"
-                            showPP decls
-                            let odecls = if doOptimize
-                                            then optimize decls
-                                            else decls
-                            printPCF "\n\n------------- OPTIMIZED:\n"
-                            showPP odecls
-                            let irdecls = runCC odecls 0
-                            --printPCF "\n\n------------- IRDECLS:\n"
-                            --showL irdecls
-                            let canon = runCanon irdecls
-                                llvm = toStrict $ ppllvm $ codegen canon
-                            --printPCF "\n\n------------- CANON:\n"
-                            --printPCF $ show canon
-                            liftIO $ TIO.writeFile (f++".ll") llvm
-                            printPCF ("Archivo "++f++".ll creado.\n")
-                            return ()
-    
-bytecompileFiles :: (MonadPCF m, MonadMask m) => [String] -> Bool -> m ()
-bytecompileFiles [] _       = return ()
-bytecompileFiles (x:xs) jtc = do
+runFiles :: (MonadPCF m, MonadMask m) => [String] -> Mode -> m ()
+runFiles [] _       = return ()
+runFiles (x:xs) mode = do
         modify (\s -> s { lfile = x, inter = False })
-        catchErrors $ bytecompileFile x jtc
-        bytecompileFiles xs jtc
+        catchErrors $ runFile x mode
+        runFiles xs mode
 
-bytecompileFile ::  (MonadPCF m, MonadMask m) => String -> Bool -> m ()
-bytecompileFile f jtc = do
+runFile ::  (MonadPCF m, MonadMask m) => String -> Mode -> m ()
+runFile f mode = do
     printPCF ("Abriendo "++f++"...")
     let filename = reverse(dropWhile isSpace (reverse f))
     x <- liftIO $ catch (readFile filename)
@@ -157,13 +115,30 @@ bytecompileFile f jtc = do
                          return "")
     sdecls <- parseIO filename sprogram x
     decls <- bc_elab_sdecl sdecls -- hacemos un desugaring a cada declaracion de la lista
-    mapM_ tcDecl decls
-    if jtc then do
-            printPCF ("Las declaraciones de "++f++" están bien tipadas.")
-           else do
-            bytecode <- bytecompileModule decls -- transformamos la lista en un bytecode
-            liftIO $ bcWrite bytecode (f++".byte") -- escribimos el archivo
-            printPCF ("Archivo "++f++".byte creado.\n")
+    when debug (do printPCF "\n\n------------- DECLS:\n"
+                   showPP decls)
+    let odecls = if doOptimize
+        then optimize decls
+        else decls
+    when (debug && doOptimize) (do printPCF "\n\n------------- OPTIMIZED:\n"
+                                   showPP odecls)
+    case mode of
+        Typecheck      -> do mapM_ tcDecl odecls
+                             printPCF $ "Las declaraciones de "++f++" están bien tipadas."
+        Bytecompile    -> do bytecode <- bytecompileModule odecls -- transformamos la lista en un bytecode
+                             liftIO $ bcWrite bytecode (f++".byte") -- escribimos el archivo
+                             printPCF $ "Archivo "++f++".byte creado.\n"
+        Canon          -> let irdecls = runCC odecls 0
+                              canon = runCanon irdecls
+                              llvm = toStrict $ ppllvm $ codegen canon
+                          in do when debug (do printPCF "\n\n------------- IRDECLS:\n"
+                                               showL irdecls
+                                               printPCF "\n\n------------- CANON:\n"
+                                               printPCF $ show canon)
+                                liftIO $ TIO.writeFile (f++".ll") llvm
+                                printPCF $ "Archivo "++f++".ll creado.\n"
+        Interactive    -> undefined
+        Run            -> undefined
     
 byterunFiles :: (MonadPCF m, MonadMask m) => [String] -> m ()
 byterunFiles [] = return ()
@@ -173,8 +148,6 @@ byterunFiles (x:xs) = do
         bytecode <- liftIO $ bcRead x
         catchErrors $ runBC bytecode
         byterunFiles xs
-
------------------ FIN SECCION BYTECODE
           
 main' :: (MonadPCF m, MonadMask m) => [String] -> InputT m ()
 main' args = do
@@ -216,14 +189,6 @@ parseIO ::  MonadPCF m => String -> P a -> String -> m a
 parseIO filename p x = case runP p x filename of
                   Left e  -> throwError (ParseErr e)
                   Right r -> return r
-{-
-handleDecl ::  MonadPCF m => Decl NTerm -> m ()
-handleDecl (Decl p x t) = do
-        let tt = elab t
-        tcDecl (Decl p x tt)    
-        te <- eval tt
-        addDecl (Decl p x te)
-        -}
 
 handleSDecl :: MonadPCF m => SDecl STerm -> m ()
 handleSDecl (SType p n t) = do ns <- lookupNTy n
