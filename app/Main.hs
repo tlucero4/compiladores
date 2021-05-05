@@ -45,17 +45,13 @@ import LLVM.Pretty (ppllvm)
 prompt :: String
 prompt = "PCF> "
 
-doOptimize :: Bool
-doOptimize = False
-
-debug :: Bool
-debug = False
-
 data Mode =   Interactive
             | Typecheck
             | Bytecompile
             | Canon
             | Run
+            | Debug
+            deriving Eq
 
 -- | Parser de banderas
 parseMode :: Parser Mode
@@ -63,6 +59,7 @@ parseMode = flag' Typecheck ( long "typecheck" <> short 't' <> help "Solo cheque
         <|> flag' Bytecompile (long "bytecompile" <> short 'b' <> help "Compilar a la BVM")
         <|> flag' Canon (long "canon" <> short 'c' <> help "Conversión a bajo nivel")
         <|> flag' Run (long "run" <> short 'r' <> help "Ejecutar bytecode en la BVM")
+        <|> flag' Debug (long "debug" <> short 'd' <> help "Solo muestra los términos internos")
         <|> flag Interactive Interactive ( long "interactive" <> short 'i' <> help "Ejecutar en forma interactiva" )
 
 -- | Parser de opciones general, consiste de un modo y una lista de archivos a procesar
@@ -115,14 +112,18 @@ runFile f mode = do
                          return "")
     sdecls <- parseIO filename sprogram x
     decls <- bc_elab_sdecl sdecls -- hacemos un desugaring a cada declaracion de la lista
-    when debug (do printPCF "\n\n------------- DECLS:\n"
-                   showPP decls)
-    let odecls = if doOptimize
-        then optimize decls
-        else decls
-    when (debug && doOptimize) (do printPCF "\n\n------------- OPTIMIZED:\n"
-                                   showPP odecls)
+    when (mode == Debug) (do printPCF "\n\n------------- DECLS:\n"
+                             showPP decls)
+    let odecls = optimize decls
+    when (mode == Debug) (do printPCF "\n\n------------- OPTIMIZED:\n"
+                             showPP odecls)
     case mode of
+        Debug          -> let irdecls = runCC odecls 0
+                              canon = runCanon irdecls
+                          in do printPCF "\n\n------------- IRDECLS:\n"
+                                showL irdecls
+                                printPCF "\n\n------------- CANON:\n"
+                                printPCF $ show canon
         Typecheck      -> do mapM_ tcDecl odecls
                              printPCF $ "Las declaraciones de "++f++" están bien tipadas."
         Bytecompile    -> do bytecode <- bytecompileModule odecls -- transformamos la lista en un bytecode
@@ -131,11 +132,7 @@ runFile f mode = do
         Canon          -> let irdecls = runCC odecls 0
                               canon = runCanon irdecls
                               llvm = toStrict $ ppllvm $ codegen canon
-                          in do when debug (do printPCF "\n\n------------- IRDECLS:\n"
-                                               showL irdecls
-                                               printPCF "\n\n------------- CANON:\n"
-                                               printPCF $ show canon)
-                                liftIO $ TIO.writeFile (f++".ll") llvm
+                          in do liftIO $ TIO.writeFile (f++".ll") llvm
                                 printPCF $ "Archivo "++f++".ll creado.\n"
         Interactive    -> undefined
         Run            -> undefined

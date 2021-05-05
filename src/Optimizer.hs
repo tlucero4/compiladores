@@ -14,7 +14,7 @@ numCycles :: Int
 numCycles = 1
 
 inlineHeur :: Int
-inlineHeur = 12
+inlineHeur = 100
 
 apply2Term :: (Term -> Term) -> TDecl Term -> TDecl Term
 apply2Term f (TDecl p n t b) = TDecl p n t $ f b
@@ -25,11 +25,11 @@ optimize = optimizeCycle numCycles
 optimizeCycle :: Int -> [TDecl Term] -> [TDecl Term]
 optimizeCycle 0 ts = ts
 optimizeCycle n ts = let ts' = map (apply2Term arithCalc) ts
-                         ts'' = inlineFun ts'
-                     in optimizeCycle (n-1) ts''
+                         --ts'' = inlineFun ts'
+                     in optimizeCycle (n-1) ts'
                         
 
--- Reducing Arithmetic Expressions (and Dead Code Elimination):
+-- Reducción de expresiones aritméticas y eliminación de código muerto
 
 arithCalc :: Term -> Term
 arithCalc (Lam i n ty t) = Lam i n ty (arithCalc t)
@@ -51,45 +51,12 @@ arithCalc (BinaryOp i o t u) = let t' = arithCalc t
                                     _                                    -> BinaryOp i o t' u'
 arithCalc t = t
 
--- Reducing Common Subexpressions:
+-- Funciones Inline (esta optimización falla en varios casos, asi que por defecto esta comentada)
 
-commonSubExpr :: Term -> Term
-commonSubExpr t = t -- Hacer
-
--- Creating In Line Functions:
-
-getFreshName :: State Int Name
-getFreshName = do i <- get
-                  modify (+1)
-                  return ("nv" ++ show i)
-                                          
-calcSizeOfFun :: Term -> Int -- The Heuristic
-calcSizeOfFun (Lam _ _ _ t) = 1 + calcSizeOfFun t
-calcSizeOfFun (App _ t u) = 1 + calcSizeOfFun t + calcSizeOfFun u
-calcSizeOfFun (Fix _ _ _ _ _ t) = 2 + calcSizeOfFun t
-calcSizeOfFun (IfZ _ c t e) = calcSizeOfFun c + calcSizeOfFun t + calcSizeOfFun e
-calcSizeOfFun (Let _ _ _ d t) = calcSizeOfFun d + calcSizeOfFun t
-calcSizeOfFun (UnaryOp _ _ t) = calcSizeOfFun t
-calcSizeOfFun (BinaryOp _ _ t u) = calcSizeOfFun t + calcSizeOfFun u
-calcSizeOfFun t = 1
-
-calcSizeOfArgs :: Ty -> Int
-calcSizeOfArgs (FunTy _ t) = 1 + calcSizeOfArgs t
-calcSizeOfArgs _ = 1
-
-getFuns :: [TDecl Term] -> Writer [(Name, Term, Int, Int)] ()
-getFuns [] = return ()
-getFuns (x:xs) = case (tdeclType x) of
-                      FunTy _ t -> do let s = calcSizeOfFun (tdeclBody x)
-                                          nargs = calcSizeOfArgs t
-                                      tell [(tdeclName x, tdeclBody x, s, nargs)]
-                                      getFuns xs  
-                      _         -> getFuns xs
-
-deleteFun :: Name -> [TDecl Term] -> [TDecl Term] -- Por ahora no la usamos
-deleteFun _ [] = []
-deleteFun n (x:xs) = if (n == tdeclName x) then xs
-                                           else x : (deleteFun n xs)
+getFreshName :: Name -> State Int Name
+getFreshName n = do i <- get
+                    modify (+1)
+                    return ("_" ++ n ++ show i)
 
 substLam :: Term -> Int -> Term -> Term
 substLam r k (App i t u) = App i (substLam r k t) (substLam r k u)
@@ -107,7 +74,7 @@ substLamR k ns [] t = return $ closeN (reverse ns) t -- k descuenta los argument
 substLamR k ns (x:xs) (Lam _ _ _ t) = case x of
                                         V _ _ -> substLamR (k-1) ns xs $ substLam x k t
                                         Const _ _ -> substLamR (k-1) ns xs $ substLam x k t
-                                        _ ->  do fr <- getFreshName
+                                        _ ->  do fr <- getFreshName "lv"
                                                  let it = substLam (V NoPos (Free fr)) k t
                                                  ap <- substLamR (k-1) (fr:ns) xs it
                                                  return (Let NoPos fr NatTy x ap)
@@ -118,7 +85,7 @@ delAppFix k t@(App _ (V _ (Bound k')) u) = if (k + 1 == k') then Just t else Not
 delAppFix k (App _ t u) = delAppFix k t
 delAppFix _ _ = Nothing
 
-substFix :: [Term] -> Int -> Term -> Term
+substFix :: Term -> Int -> Term -> Term
 substFix r k (App i t u) = case delAppFix k t of
                                 Just a -> substFix r k a
                                 Nothing -> App i (substFix r k t) (substFix r k u)
@@ -128,28 +95,27 @@ substFix r k (IfZ i c t e) = IfZ i (substFix r k c) (substFix r k t) (substFix r
 substFix r k (Let i x ty d t) = Let i x ty (substFix r k d) (substFix r k t)
 substFix r k (UnaryOp i o t) = UnaryOp i o (substFix r k t)
 substFix r k (BinaryOp i o t u) = BinaryOp i o (substFix r k t) (substFix r k u)
-substFix r k (V i (Bound n)) = if (n < k) then (r !! n) else (V i (Bound (n-k)))
+substFix r k t@(V i (Bound n)) = if (n == k) then r else t
 substFix _ _ t = t
 
-upbound :: Int -> Term -> Term
-upbound k (App i t u) = App i (upbound k t) (upbound k u)
-upbound k (Lam i x ty t) = Lam i x ty (upbound k t)
-upbound k (Fix i f fty x xty t) = Fix i f fty x xty (upbound k t)
-upbound k (IfZ i c t e) = IfZ i (upbound k c) (upbound k t) (upbound k e)
-upbound k (Let i x ty d t) = Let i x ty (upbound k d) (upbound k t)
-upbound k (UnaryOp i o t) = UnaryOp i o (upbound k t)
-upbound k (BinaryOp i o t u) = BinaryOp i o (upbound k t) (upbound k u)
-upbound k (V i (Bound n)) = V i (Bound (n+k))
-upbound _ t = t
-
-substFixR :: Int -> [Term] -> Name -> Name -> Term -> Term
-substFixR k as f n (Lam _ _ _ t) = substFixR (k+1) as f n t
-substFixR k as f n t = let f' = f++"'"
-                           n' = n++"'"
-                           t' = substFix (map (upbound 2) $ reverse $ tail as) k t
-                           letT = Fix NoPos f' NatTy n' NatTy t'
-                           inT = App NoPos (V NoPos (Bound 0)) (upbound 1 $ head as)
-                       in Let NoPos f' NatTy letT inT
+substFixR :: Int -> [Name] -> Term -> [Term] -> Term -> State Int Term
+substFixR k ns fa (a:as) (Lam _ _ _ t) = case a of
+                                               V _ _ -> substFixR (k-1) ns fa as $ substFix a k t
+                                               Const _ _ -> substFixR (k-1) ns fa as $ substFix a k t
+                                               _ ->  do fr <- getFreshName "rv" 
+                                                        let it = substFix (V NoPos (Free fr)) k t
+                                                        ap <- substFixR (k-1) (fr:ns) fa as it
+                                                        return (Let NoPos fr NatTy a ap)
+substFixR k ns fa [] t = do fn <- getFreshName "prel"
+                            fv <- getFreshName "var"
+                            fr <- getFreshName "rv"
+                            let (inT, ff) = case fa of
+                                                V _ _ -> (App NoPos (V NoPos (Bound 0)) fa, "")
+                                                Const _ _ -> (App NoPos (V NoPos (Bound 0)) fa, "")
+                                                _ -> (App NoPos (V NoPos (Bound 0)) (V NoPos (Free fr)), fr)
+                                letT = Fix NoPos fn NatTy fv NatTy t
+                            return $ if null ff then closeN (reverse ns) (Let NoPos fn NatTy letT inT)
+                                                else Let NoPos ff NatTy fa $ closeN (ff:reverse ns) (Let NoPos fn NatTy letT inT)
                                       
 getArgs :: Term -> Name -> [Term] -> Maybe [Term]
 getArgs (App _ t a) n as = getArgs t n (a:as)
@@ -162,7 +128,7 @@ replaceFun n r na x@(App i t a) = case (getArgs t n [a]) of
                                   Just as -> if length as == na then -- solo aceptamos optimizar funciones aplicadas totalmente
                                                 case r of
                                                   Lam _ _ _ _ -> fst $ runState (substLamR (na - 1) [] as r) 0
-                                                  Fix p f fty n nty t -> substFixR 0 as f n t 
+                                                  Fix _ _ _ _ _ t -> fst $ runState (substFixR (na - 1) [] (head as) (tail as) t) 0
                                                   _ -> App i (replaceFun n r na t) (replaceFun n r na a)
                                                                 else App i (replaceFun n r na t) (replaceFun n r na a)
                                   Nothing -> App i (replaceFun n r na t) (replaceFun n r na a)
@@ -174,11 +140,42 @@ replaceFun n r na (UnaryOp i o t) = UnaryOp i o (replaceFun n r na t)
 replaceFun n r na (BinaryOp i o t u) = BinaryOp i o (replaceFun n r na t) (replaceFun n r na u)
 replaceFun _ _ _ t = t
 
-doInline :: [TDecl Term] -> [(Name, Term, Int, Int)] -> [TDecl Term]
+calcSizeOfFun :: Term -> Int -- The Heuristic
+calcSizeOfFun (Lam _ _ _ t) = 1 + calcSizeOfFun t
+calcSizeOfFun (App _ t u) = 1 + calcSizeOfFun t + calcSizeOfFun u
+calcSizeOfFun (Fix _ _ _ _ _ t) = 2 + calcSizeOfFun t
+calcSizeOfFun (IfZ _ c t e) = calcSizeOfFun c + calcSizeOfFun t + calcSizeOfFun e
+calcSizeOfFun (Let _ _ _ d t) = calcSizeOfFun d + calcSizeOfFun t
+calcSizeOfFun (UnaryOp _ _ t) = calcSizeOfFun t
+calcSizeOfFun (BinaryOp _ _ t u) = calcSizeOfFun t + calcSizeOfFun u
+calcSizeOfFun t = 1
+
+calcSizeOfArgs :: Ty -> Int
+calcSizeOfArgs (FunTy _ t) = 1 + calcSizeOfArgs t
+calcSizeOfArgs _ = 0
+
+getFuns :: [TDecl Term] -> Writer [(Name, Term, Int)] ()
+getFuns [] = return ()
+getFuns (x:xs) = case (tdeclBody x) of
+                      Lam _ _ _ _ -> do let s = calcSizeOfFun (tdeclBody x)
+                                            nargs = calcSizeOfArgs (tdeclType x)
+                                        when (s < inlineHeur) $ tell [(tdeclName x, tdeclBody x, nargs)]
+                                        getFuns xs  
+                      Fix _ _ _ _ _ _ -> do let s = calcSizeOfFun (tdeclBody x)
+                                                nargs = calcSizeOfArgs (tdeclType x)
+                                            when (s < inlineHeur) $ tell [(tdeclName x, tdeclBody x, nargs)]
+                                            getFuns xs  
+                      _ -> getFuns xs
+
+deleteFun :: Name -> [TDecl Term] -> [TDecl Term] -- Por ahora no la usamos
+deleteFun _ [] = []
+deleteFun n (x:xs) | n == tdeclName x = xs
+                   | otherwise        = x : (deleteFun n xs)
+                                           
+doInline :: [TDecl Term] -> [(Name, Term, Int)] -> [TDecl Term]
 doInline ts [] = ts
-doInline ts ((n, t, i, na):xs) = let ts' = if i < 200    then map (apply2Term (replaceFun n t na)) (deleteFun n ts)
-                                                         else ts
-                                 in doInline ts' xs
+doInline ts ((n, t, na):xs) = let ts' = map (apply2Term (replaceFun n t na)) (deleteFun n ts)
+                              in doInline ts' xs
                       
 inlineFun :: [TDecl Term] -> [TDecl Term]
 inlineFun ts = let (_, table) = runWriter (getFuns ts)
