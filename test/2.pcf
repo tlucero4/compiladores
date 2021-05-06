@@ -1,5 +1,2 @@
-let rec mult (m n : Nat) : Nat = ifz n then n else m + (mult m (pred n))
-let rec exp (k n : Nat) : Nat = ifz n then (succ n) else mult k (exp k (pred n))
-# let rec fact (n : Nat) : Nat = ifz n then (succ n) else mult n (fact (pred n))
-let rec countdown (n : Nat) : Nat = ifz n then 0 else countdown (print (n - 1))
-let _ : Nat = countdown (6 + 7)
+let rec exp (k n : Nat) : Nat = ifz n then (succ n) else k * (exp k (pred n))
+let x : Nat = exp 3 4
