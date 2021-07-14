@@ -127,13 +127,11 @@ runFile f mode = do
         Typecheck      -> do mapM_ tcDecl odecls
                              printPCF $ "Las declaraciones de "++f++" están bien tipadas."
         Bytecompile    -> do bytecode <- bytecompileModule odecls -- transformamos la lista en un bytecode
-                             liftIO $ bcWrite bytecode (f++".byte") -- escribimos el archivo
-                             printPCF $ "Archivo "++f++".byte creado.\n"
+                             liftIO $ bcWrite bytecode "out.byte" -- escribimos el archivo
         Canon          -> let irdecls = runCC odecls 0
                               canon = runCanon irdecls
                               llvm = toStrict $ ppllvm $ codegen canon
-                          in do liftIO $ TIO.writeFile (f++".ll") llvm
-                                printPCF $ "Archivo "++f++".ll creado.\n"
+                          in do liftIO $ TIO.writeFile "out.ll" llvm
         Interactive    -> undefined
         Run            -> undefined
     

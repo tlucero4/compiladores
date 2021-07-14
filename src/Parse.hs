@@ -106,9 +106,9 @@ binaryOpName =
 
 infixBinaryOpName :: P BinaryOp
 infixBinaryOpName =
-      (reserved "+" >> return Add)
-  <|> (reserved "-" >> return Sub)
-  <|> (reserved "*" >> return Prod)
+      (reservedOp "+" >> return Add)
+  <|> (reservedOp "-" >> return Sub)
+  <|> (reservedOp "*" >> return Prod)
 
 tyvar :: P Name
 tyvar = Tok.lexeme lexer $ do
