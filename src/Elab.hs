@@ -7,7 +7,8 @@ Maintainer  : mauro@fceia.unr.edu.ar
 Stability   : experimental
 
 Este módulo permite elaborar términos y declaraciones para convertirlas desde
-fully named (@NTerm) a locally closed (@Term@) 
+fully named (@NTerm) a locally closed (@Term@). Agregada luego la responsabilidad
+de hacer el desugaring de términos.
 -}
 
 module Elab ( elab, elab_sdecl, desugar, desugarTy, bc_elab_sdecl ) where
@@ -33,14 +34,14 @@ elab' (Let p n nty f x)     = Let p n nty (elab' f) (close n (elab' x))
 ---elab_decl :: Decl NTerm -> Decl Term
 ---elab_decl = fmap elab
 
-
--- | 'desugar' transforma el AST superficial en un AST interno para
--- eliminar toda la azucar sintáctica
-
+-- | 'buildFunType' es una función auxiliar que construye
+-- un tipo compuesto a través de una lista de pares
 buildFunType :: [(Name,STy)] -> STy -> STy
 buildFunType [] fty            = fty
 buildFunType (n:ns) fty        = SFunTy (snd n) (buildFunType ns fty)
 
+-- | 'sLam' es una función auxiliar del desugar para una expresión SLam
+-- que construye recursivamente el término desazucarado de funciones
 sLam :: MonadPCF m => Pos -> [(Name,STy)] -> STerm -> m NTerm
 sLam p [] t     = do dt <- desugar t
                      return dt
@@ -48,10 +49,13 @@ sLam p (n:ns) t = do nty <- desugarTy (snd n)
                      sl <- sLam p ns t
                      return (Lam p (fst n) nty sl)
 
+-- | 'sLet' es una función auxiliar del desugar para una expresión SLet
+-- que construye recursivamente el término desazucarado de un let-binding
 sLet :: Pos -> Name -> STy -> [(Name,STy)] -> Bool -> STerm -> STerm -> STerm
 sLet p f fty [n]    r d a = SLet p f (SFunTy (snd n) fty) [] False (SFix p f (SFunTy (snd n) fty) (fst n) (snd n) d) a
 sLet p f fty (n:ns) r d a = sLet p f (buildFunType ns fty) [n] r (SLam p ns d) a
 
+-- | 'desugarTy' elimina el azucar sintáctica de los tipos
 desugarTy :: MonadPCF m => STy -> m Ty
 desugarTy (SNatTy)       = return NatTy
 desugarTy (SFunTy t y)   = do   dt <- desugarTy t
@@ -63,6 +67,8 @@ desugarTy (SNamedTy p n) = do
          Just t  -> return (NamedTy n t)
          _       -> failPosPCF p $ "El tipo "++n++" no existe."
 
+-- | 'desugar' transforma el AST superficial en un AST interno para
+-- eliminar toda la azucar sintáctica
 desugar :: MonadPCF m => STerm -> m NTerm
 desugar (SV p v)               = return (V p v)
 desugar (SConst p c)           = return (Const p c)
@@ -74,7 +80,6 @@ desugar (SApp p h a)           =  do dh <- desugar h
                                                                         return (BinaryOp p o dh dt)
                                           _                      -> do  da <- desugar a
                                                                         return (App p dh da)
--- Fix deberia tener una lista de variables con sus tipos? En la teoria no se usa nunca
 desugar (SFix p f fty n nty t) = do dfty <- desugarTy fty
                                     dnty <- desugarTy nty
                                     dt <- desugar t
@@ -98,10 +103,13 @@ desugar (SLet p n nty [] False d a) = do dd <- desugar d
 desugar (SLet p f fty ns False d a) = desugar (SLet p f (buildFunType ns fty) [] False (SLam p ns d) a)
 desugar (SLet p f fty ns True d a)  = desugar (sLet p f fty ns True d a)
 
+-- | 'elab' ahora además de transformar las variables, llama
+-- al eliminador de azucar primero
 elab :: MonadPCF m => STerm -> m Term
 elab t = do dt <- desugar t
             return (elab' dt)
-                                        
+                                  
+-- | 'elab_sdecl' gestiona el desugaring de declaraciones de términos
 elab_sdecl :: MonadPCF m => SDecl STerm -> m (TDecl Term)
 elab_sdecl (SDecl p n nty [] _ st)        = do dty <- desugarTy nty
                                                t <- elab st
@@ -114,6 +122,8 @@ elab_sdecl (SDecl p n nty vs _ st)    = do  dty <- desugarTy (buildFunType vs nt
                                             dl <- elab (SLam p vs st)
                                             return (TDecl p n dty dl)
 
+-- | 'bc_elab_sdecl' toma las declaraciones de tipos para gestionar
+-- su desugaring. En caso de otras declaraciones pasa el mando a 'elab_sdecl'
 bc_elab_sdecl :: MonadPCF m => [SDecl STerm] -> m ([TDecl Term])
 bc_elab_sdecl [] = return []
 bc_elab_sdecl ((SType p n t):xs) = do   ns <- lookupNTy n

@@ -1,3 +1,12 @@
+{-|
+Module      : CIR
+Description : Conversión de código intermedio a código de bajo nivel
+
+Este módulo traduce el código IR (@IrDecl) a un programa canónico (@CanonProg)
+al eliminar las expresiones complejas y la estructura de árbol, creando un código
+que es secuencial, y ordenado en bloques.
+-}
+
 module CIR where
 
 import Lang
@@ -67,32 +76,41 @@ instance Show CanonProg where
 
       -- A partir de acá desarrollamos la conversión:
 
+-- | 'putEndLabel' crea un salto a una etiqueta l en el
+-- último bloque de una lista dada
 putEndLabel :: [BasicBlock] -> Loc -> [BasicBlock]
 putEndLabel [] _ = []
 putEndLabel [(n,i,t)] l = [(n,i,Jump l)]
 putEndLabel (x:xs) l = x : putEndLabel xs l
 
+-- | 'addInstr' agrega una instrucción al final en el acumulador de instrucciones
 addInstr :: Inst -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) ()
 addInstr i' = modify (\(k, i, l) -> (k, i ++ [i'], l))
 
+-- | 'getFreshName' genera un nombre fresco nuevo para constantes
 getFreshName :: StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Name
 getFreshName = do (k, _, _) <- get
                   modify (\(k, i, l) -> (k+1, i, l))
                   return ("__c_" ++ show k)
-                  
+      
+-- | 'assignValTo' es una función auxiliar de mkBlocks que
+-- se encarga de agregar una asignación de registro a una
+-- instrucción de bajo nivel, y devuelve el resgistro
 assignValTo :: Expr -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Val
 assignValTo e = do  f <- getFreshName
                     let reg = Temp f
                     addInstr (Assign reg e)
                     return $ R reg
 
--- Seteamos la condición del If
+-- | 'mkCond' genera código para una instrucción condicional,
+-- dándole un terminador condicional al último bloque
 mkCond :: Ir -> Loc -> Loc -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) ()
 mkCond c t e = do vc <- mkBlocks c
                   (_,i,l) <- get
                   tell $ [(l, i, CondJump (Eq vc $ C 0) t e)]
                     
--- Creamos un bloque con la rama del If que corresponde
+-- | 'mkBranch' genera código para una rama del If,
+-- dándole un valor de asignación a la variable resultado
 mkBranch :: Ir -> Loc -> Loc -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) (Loc, Reg)
 mkBranch t l c = do let ret = Temp $ l++"_ret"
                     modify (\(k, _, _) -> (k, [], l))
@@ -100,7 +118,11 @@ mkBranch t l c = do let ret = Temp $ l++"_ret"
                     (_,i,l') <- get
                     tell $ [(l', i ++ [Assign ret $ CIR.V vt], Jump c)]
                     return (l', ret)
-                               
+
+-- | 'mkBlocks' toma términos intermedios y los traduce en un valor final
+-- junto a (posibles) bloques de código. El valor final devuelto es dado
+-- a mkPcfMain para ir guardando (con Store) los resultados finales.
+-- Solo aparecerán bloques junto al resultado en la presencia de Ifs.
 mkBlocks :: Ir -> StateT (Int, [Inst], Loc) (Writer [BasicBlock]) Val
 mkBlocks (IrVar n) = if (isPrefixOf "__" n) then return (R $ Temp n) else return $ G n
 mkBlocks (IrConst (CNat n)) = return $ C n
@@ -131,11 +153,19 @@ mkBlocks (IrIfZ c t e) = do f <- getFreshName
                             modify (\(k, i, l) -> (k, [Assign reg $ Phi [(lt, R rvt), (le, R rve)]] , bc))
                             return $ R reg
 
+-- | 'mkInstrMain' se encarga de gestionar la función mkBlocks
+-- y devolver tanto el valor final, como la lista de bloques
+-- auxiliares y todos los demás parámetros pertinentes
 mkInstrMain :: Int -> Ir -> Loc -> [Inst] -> Writer [BasicBlock] (Int, Name, [Inst], Val)
 mkInstrMain k ir l i = do let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks ir) (k, i, l))
                           tell $ putEndLabel bs l'
                           return (k', l', i', v)
-      
+     
+-- | 'mkPcfMain' construye los bloques básicos de la primer
+-- entrada al programa, donde se asignan todas las variables
+-- (ahora top-level) a sus distintos valores que son resultado
+-- del resto de los bloques del programa (solo si son obtenidos
+-- a través de expresiones complejas)
 mkPcfMain :: Int -> [IrDecl] -> Loc -> [Inst] -> [BasicBlock]
 mkPcfMain k [] l i = [(l,i, Return $ C 0)]
 mkPcfMain k (x:xs) lv instr = let (IrVal n ir) = x
@@ -143,6 +173,9 @@ mkPcfMain k (x:xs) lv instr = let (IrVal n ir) = x
                                   i' = i ++ [Store n $ CIR.V v]
                               in bs ++ mkPcfMain k' xs l i'
       
+-- | 'rcFun' es la función encargada de construir las funciones canónicas,
+-- que constan de un nombre, una lista de argumentos, y de bloques básicos
+-- Los bloques básicos los construye la función 'mkBlocks'
 rcFun :: Name -> [Name] -> Ir -> Int -> (CanonFun, Int)
 rcFun n a ir i = let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks ir) (i, [], n++"b"))
                      reg = Temp $ n++"_reg"
@@ -150,6 +183,10 @@ rcFun n a ir i = let ((v , (k', i', l')) , bs) = runWriter (runStateT (mkBlocks 
                      cf = (n, a, bs++[b])
                  in (cf, k')
 
+-- | 'rc' es la función auxiliar de runCanon que construye alternativamente
+-- una función canónica para funciones intermedias, o un valor canónico para
+-- valores declarados en los términos intermedios, que luego serán todos
+-- asignados en la entry denominada "pcfmain"
 rc :: [IrDecl] -> [IrDecl] -> Int -> [Either CanonFun CanonVal]
 rc ys []     i = [ Left ("pcfmain", [], mkPcfMain i (reverse ys) "entry" []) ]
 rc ys (x:xs) i = case x of
@@ -157,5 +194,7 @@ rc ys (x:xs) i = case x of
                                       in (Left $ cf) : rc ys xs i'
                     IrVal n _      -> (Right n) : rc (x:ys) xs i
 
+-- | 'runCanon' es la función final que toma una lista de
+-- declaraciones intermedias y devuelve un programa canónico
 runCanon :: [IrDecl] -> CanonProg
 runCanon is = CanonProg $ rc [] is 0

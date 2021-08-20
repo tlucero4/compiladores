@@ -54,8 +54,8 @@ data BinaryOp = Add | Sub | Prod
 
 -- | tipos de datos de declaraciones, parametrizado por el tipo del cuerpo de la declaración
 
-data IrDecl = IrFun { irDeclName :: Name, irDeclArity :: Int, irDeclArgNames :: [Name], irDeclBody :: Ir } -- Asignamos un fragmento de codigo estatico a la funcion
-            | IrVal { irDeclName :: Name, irDeclDef :: Ir } -- Asignamos una clausura a el nombre de la funcion
+data IrDecl = IrFun { irDeclName :: Name, irDeclArity :: Int, irDeclArgNames :: [Name], irDeclBody :: Ir }
+            | IrVal { irDeclName :: Name, irDeclDef :: Ir }
     deriving (Show)
 
 data Decl a = Decl { declPos :: Pos, declName :: Name, declBody :: a }
@@ -79,7 +79,6 @@ data STm info var =
   | SBinaryOp info BinaryOp
   | SInfixBinaryOp info BinaryOp (STm info var)
   | SFix info Name STy Name STy (STm info var)
---  | SFix info [(Name, Ty)] (STm info var)     ¿realmente existe una version de Fix con multiples variables?
   | SIfZ info (STm info var) (STm info var) (STm info var)
   | SLet info Name STy [(Name, STy)] Bool (STm info var) (STm info var)
   deriving (Show, Functor)
@@ -100,6 +99,7 @@ data Tm info var =
   | Let info Name Ty (Tm info var) (Tm info var)
   deriving (Show, Functor)
 
+-- | AST de términos intermedios, para luego convertirlos a código de bajo nivel
 data Ir = IrVar Name
         | IrCall Ir [Ir]
         | IrConst Const
@@ -111,7 +111,7 @@ data Ir = IrVar Name
         | IrAccess Ir Int
     deriving (Show)
 
-type STerm = STm Pos Name
+type STerm = STm Pos Name  -- ^ 'STm' incluye azucar sintáctica sobre 'Tm'
 type NTerm = Tm Pos Name   -- ^ 'Tm' tiene 'Name's como variables ligadas y libres, guarda posición
 type Term = Tm Pos Var     -- ^ 'Tm' con índices de De Bruijn como variables ligadas, different type of variables, guarda posición
 

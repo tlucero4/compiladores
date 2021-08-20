@@ -79,25 +79,32 @@ pattern DROP     = 14
 pattern PRINT    = 15
 pattern TAILCALL = 16
 
+-- | 'bct' compila un tértmino en posición de cola, donde se
+-- considera reglas especiales cuando se debe convertir una aplicación
 bct :: MonadPCF m => Term -> m Bytecode
 bct (App _ f a) = do
     bf <- bc f
     ba <- bc a
     return (bf++ba++[TAILCALL])
+-- y un condicional, donde se deben compilar en posición de cola sus ramas
 bct (IfZ _ d t e) = do
     bd <- bc d
     bt <- bct t
     be <- bct e
     let (st, se) = (length bt, length be)
     return (bd++[IFZ, st]++bt++be)
+-- y un let, ya que la instrucción DROP también se puede obviar antes de un RETURNs
 bct (Let _ _ _ t1 t2) = do
     bt1 <- bc t1
     bt2 <- bct t2
     return (bt1++[SHIFT]++bt2)
+-- en cualquier otro caso, se hace una compilación normal
 bct t = do
     bt <- bc t
     return (bt++[RETURN])
 
+-- | 'bc' convierte un término con estructura de árbol
+-- en un programa secuencial estructurado como una lista de enteros
 bc :: MonadPCF m => Term -> m Bytecode
 bc (V _ (Bound i)) = return ([ACCESS, i])
 bc (V _ (Free _)) = failPCF $ "Error de compilación: No debería haber variables libres."
@@ -141,9 +148,12 @@ bytecompileModule :: MonadPCF m => [TDecl Term] -> m Bytecode
 bytecompileModule decls = do
     term <- prog2term decls
     bytecode <- bc term
-    --printPCF (show bytecode)
     return (bytecode++[PRINT,STOP])
 
+-- | 'prog2term' convierte un programa como lista de declaraciones
+-- a un programa con un único término, usando let-bindings
+-- ya que para poder convertir el programa en un bytecode
+-- solo nos debe importar el resultado de la última definición top-level
 prog2term :: MonadPCF m => [TDecl Term] -> m Term
 prog2term [] = failPCF $ "Programa vacío"
 prog2term [(TDecl _ _ _ t)] = return t
@@ -163,6 +173,10 @@ bcWrite bs filename = BS.writeFile filename (encode $ BC $ fromIntegral <$> bs)
 bcRead :: FilePath -> IO Bytecode
 bcRead filename = map fromIntegral <$> un32  <$> decode <$> BS.readFile filename
 
+-- | 'runBC' toma la lista de enteros y va ejecutando el programa secuencialmente
+-- Una optimización agregada luego será reemplazar esta función e implementar la
+-- maquina virtual en C, donde cada instrucción tiene un coste mas bajo al estar
+-- implementada en un lenguaje de bajo nivel
 runBC :: MonadPCF m => Bytecode -> m ()
 runBC c = runBC' c [] []
 

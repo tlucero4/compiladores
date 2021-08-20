@@ -1,3 +1,11 @@
+{-|
+Module      : Closure
+Description : Lleva a cabo la conversión de clausuras
+
+Este módulo implementa la conversión de clausura para llevar las funciones de alto orden a top-level.
+Es decir, traduce cada declaración de término (@TDecl Term) en una declaración de términos intermedios (@IrDecl)
+-}
+
 module Closure (runCC) where
 
 import Lang 
@@ -6,22 +14,30 @@ import Data.List
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 
+-- | 'getFreshName' devuelve siempre un nombre fresco para una variable 
 getFreshName :: Monad m => Name -> StateT Int m Name
 getFreshName n = do i <- get
                     modify (+1)
                     return ("__" ++ n ++ show i)
 
+-- | 'rmDups' remueve los nombres duplicados de la lista de variables libres
 rmDups :: [Name] -> [Name]
 rmDups [] = []
 rmDups (x:xs) = if elem x xs then rmDups xs else (x : rmDups xs)
                     
+-- | 'makeBlock' alloca la clausura y crearla con el puntero al código
+-- de la función y luego todas las variables libres a continuación
 makeBlock :: [Name] -> Int -> Name -> Ir -> Ir
 makeBlock [] _ _ t = t
 makeBlock (x:xs) i c t = (makeBlock xs (i+1) c (IrLet x (IrAccess (IrVar c) i) t))
 
+-- | 'freshVars' indica si un nombre fue generado como variable fresca
 freshVars :: [Name] -> [Name]
 freshVars = filter $ isPrefixOf "__"
 
+-- | 'closureConvert' es la función que convierte un término en código intermedio,
+-- llevando una mónada Writer para construir código intermedio auxiliar en 
+-- los casos de funciones, para así lograr hacer el hoisting
 closureConvert :: Term -> StateT Int (Writer [IrDecl]) Ir
 closureConvert (V _ (Free n)) = return (IrVar n)
 closureConvert (V _ (Bound _)) = undefined
@@ -66,7 +82,8 @@ closureConvert c@(Fix _ f _ x _ t) = do idn <- getFreshName ""
                                         tell [(IrFun idn ida idan idb)]
                                         return (IrMkClosure idn fvc)
 
-
+-- | 'runCC' administra la conversión de cada
+-- declaración a términos intermedios
 runCC :: [TDecl Term] -> Int -> [IrDecl]
 runCC [] _ = []
 runCC ((TDecl _ n _ b) : xs) i = let ((v , i') , auxDecls) = runWriter (runStateT (closureConvert b) i)

@@ -115,8 +115,8 @@ runFile f mode = do
     when (mode == Debug) (do printPCF "\n\n------------- DECLS:\n"
                              showPP decls)
     let odecls = optimize decls
-    when (mode == Debug) (do printPCF "\n\n------------- OPTIMIZED:\n"
-                             showL odecls)
+    when (mode == Debug) (do printPCF "\n\n------------- OPTINIZED:\n"
+                             showPP odecls)
     case mode of
         Debug          -> let irdecls = runCC odecls 0
                               canon = runCanon irdecls

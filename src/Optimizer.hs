@@ -1,3 +1,10 @@
+{-|
+Module      : Optimizer
+Description : Define algunas optimizaciones de expresiones
+
+Este módulo implementa algunas optimizaciones vistas en clase (simplificaciones aritméticas, eliminación
+de código muerto, y expansiones inline de funciones no recursivas).
+-}
 
 module Optimizer (
    optimize
@@ -10,27 +17,31 @@ import MonadPCF
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 
+-- Definimos algunas variables de la optimización
+
 numCycles :: Int
 numCycles = 3
 
 inlineHeur :: Int
 inlineHeur = 100
 
+-- | 'apply2Term' aplica la función dada sobre
+-- una declaración en el cuerpo de ésta
 apply2Term :: (Term -> Term) -> TDecl Term -> TDecl Term
 apply2Term f (TDecl p n t b) = TDecl p n t $ f b
 
+-- | 'optimize' ejecuta ciclicamente (hasta un valor dado)
+-- la reducción de expresiones aritmeticas seguidas del inline
 optimize :: [TDecl Term] -> [TDecl Term]
-optimize = optimizeCycle numCycles
-                     
-optimizeCycle :: Int -> [TDecl Term] -> [TDecl Term]
-optimizeCycle 0 ts = ts
-optimizeCycle n ts = let ts' = map (apply2Term arithCalc) ts
-                         ts'' = inlineFun ts'
-                     in optimizeCycle (n-1) ts''
+optimize = doCycle numCycles where                     
+	doCycle 0 ts = ts
+	doCycle n ts = doCycle (n-1) $ inlineFuns $ map (apply2Term arithCalc) ts
                         
 
 -- Reducción de expresiones aritméticas y eliminación de código muerto
 
+-- | 'arithCalc' se encarga de la reducción sobre operaciones binarios
+-- y también elimina código muerto en los condicionales
 arithCalc :: Term -> Term
 arithCalc (Lam i n ty t) = Lam i n ty (arithCalc t)
 arithCalc (App i t u) = App i (arithCalc t) (arithCalc u)
@@ -53,34 +64,52 @@ arithCalc t = t
 
 -- Funciones Inline (solo para funciones no recursivas)
 
+-- | 'getFreshName' devuelve siempre un nombre fresco
 getFreshName :: Name -> State Int Name
 getFreshName n = do i <- get
                     modify (+1)
                     return ("_" ++ n ++ show i)
 
-fst3 :: (a,b,c) -> a
-fst3 (x,_,_) = x
-                    
+-- | 'addLets' es una función auxiliar que simplemente agrega let-binders
+-- al cuerpo del término expandido para que los argumentos complejos queden
+-- correctametne bindeados a su Let correspondiente.
 addLets :: [(Name, Term,Ty)] -> Term ->  Term
 addLets [] t = t
 addLets ((n,c,ty):ns) t = addLets ns $ Let NoPos n ty c t
                     
+-- | 'substLamR' toma
+-- @ un contador de argumentos ascendente
+-- @ un contador de argumentos decreciente
+-- @ una lista con la tupla (nombre, cuerpo, tipo) para guardar argumentos complejos
+-- @ una lista de cuerpos de argumentos
+-- @ el cuerpo de la función a expandir
+-- La idea es eliminar todos los binders del cuerpo de la funcion, chequeando el tipo de argumento que le corresponde.
+-- Si el argumento es un valor, se deja en la lista de cuerpos de argumentos tal cual esta.
+-- Si el argumento es complejo, se reemplaza por un nombre fresco y se guarda en la lista de argumentos complejo su nombre fresco y su cuerpo
+-- Una vez procesados todos los argumentos, primero se sustituyen todos los cuerpos de los argumentos en el cuerpo de la función
+-- desprovisto de binders. Luego, para aquellos cuerpos que se reemplazaron por un nombre fresco, los traducimos nuevamente a indices
+-- de Bruijn para que luego agregando los lets-binders queden correctamente bindeados.
 substLamR :: Int -> Int -> [(Name, Term, Ty)] -> [Term] ->  Term -> State Int Term
-substLamR _ 0 ns xs t = return $ addLets ns $ closeN (reverse $ map fst3 ns) $ substN xs t
-substLamR k j ns xs (Lam _ _ ty t) = case (xs !! k) of
-                                        V _ _ -> substLamR (k+1) (j-1) ns xs t
-                                        Const _ _ -> substLamR (k+1) (j-1) ns xs t
+substLamR _ 0 ns as t = return $ addLets ns $ closeN (reverse $ map (\(x,_,_) -> x) ns) $ substN as t
+substLamR k j ns as (Lam _ _ ty t) = case (as !! k) of
+                                        V _ _ -> substLamR (k+1) (j-1) ns as t
+                                        Const _ _ -> substLamR (k+1) (j-1) ns as t
                                         c ->  do fr <- getFreshName "lv"
-                                                 let xs' = let (xs1,xs2) = splitAt k xs
-                                                            in (xs1 ++ [V NoPos (Free fr)] ++ tail xs2)
-                                                 substLamR (k+1) (j-1) ((fr,c,ty):ns) xs' t
-  
+                                                 let as' = let (as1,as2) = splitAt k as
+                                                            in (as1 ++ [V NoPos (Free fr)] ++ tail as2)
+                                                 substLamR (k+1) (j-1) ((fr,c,ty):ns) as' t
+
+-- | 'getArgs' se encarga de devolver una lista de argumentos
+-- solo cuando se aplican sobre la funcion correspondiente
+-- y con el mismo numero de argumentos que espera la función 
 getArgs :: Term -> Name -> [Term] -> Maybe [Term]
 getArgs (App _ t a) n as = getArgs t n (a:as)
 getArgs (V _ (Free n')) n as = if (n == n') then Just as
                                             else Nothing
 getArgs _ _ _ = Nothing
 
+-- | 'replaceFun' toma un nombre de función, su cuerpo, y su número de argumentos,
+-- y reemplaza todas las aplicaciones totales (no parciales) de la función por su cuerpo
 replaceFun :: Name -> Term -> Int -> Term -> Term
 replaceFun n r na x@(App i t a) = case (getArgs t n [a]) of
                                   Just as -> case r of
@@ -96,7 +125,9 @@ replaceFun n r na (UnaryOp i o t) = UnaryOp i o (replaceFun n r na t)
 replaceFun n r na (BinaryOp i o t u) = BinaryOp i o (replaceFun n r na t) (replaceFun n r na u)
 replaceFun _ _ _ t = t
 
-calcSizeOfFun :: Term -> Int -- The Heuristic
+-- | 'calcSizeOfFun' es la heuristica implementada, que calcula
+-- el "tamaño" de la función dandole valores a los términos
+calcSizeOfFun :: Term -> Int
 calcSizeOfFun (Lam _ _ _ t) = 1 + calcSizeOfFun t
 calcSizeOfFun (App _ t u) = 1 + calcSizeOfFun t + calcSizeOfFun u
 calcSizeOfFun (Fix _ _ _ _ _ t) = 2 + calcSizeOfFun t
@@ -106,10 +137,13 @@ calcSizeOfFun (UnaryOp _ _ t) = calcSizeOfFun t
 calcSizeOfFun (BinaryOp _ _ t u) = calcSizeOfFun t + calcSizeOfFun u
 calcSizeOfFun t = 1
 
+-- | 'calcSizeOfArgs' calcula el numero de composiciones de un tipo 
 calcSizeOfArgs :: Ty -> Int
 calcSizeOfArgs (FunTy _ t) = 1 + calcSizeOfArgs t
 calcSizeOfArgs _ = 0
 
+-- | 'getFuns' toma todas las funciones, las pasa por un filtro
+-- de acuerdo con la heuristica elegida Y devuelve una tabla
 getFuns :: [TDecl Term] -> Writer [(Name, Term, Int)] ()
 getFuns [] = return ()
 getFuns (x:xs) = case (tdeclBody x) of
@@ -123,27 +157,35 @@ getFuns (x:xs) = case (tdeclBody x) of
                                             getFuns xs  
                       _ -> getFuns xs
 
-deleteFun :: Name -> [TDecl Term] -> [TDecl Term] -- Por ahora no la usamos
+-- | 'deleteFun' elimina una función declarada luego de que fue
+-- expandida en todas sus aplicaciones
+deleteFun :: Name -> [TDecl Term] -> [TDecl Term]
 deleteFun _ [] = []
 deleteFun n (x:xs) | n == tdeclName x = xs
                    | otherwise        = x : (deleteFun n xs)
-                                           
+
+-- | 'doInline' pasa función por función el proceso de inline,
+-- sobre un conjunto de declaraciones mas reducido (posiblemente)
 doInline :: [TDecl Term] -> [(Name, Term, Int)] -> [TDecl Term]
 doInline ts [] = ts
 doInline ts ((n, t, na):xs) = let ts' = map (apply2Term (replaceFun n t na)) (deleteFun n ts)
                               in doInline ts' xs
-                      
-inlineFun :: [TDecl Term] -> [TDecl Term]
-inlineFun ts = let (_, table) = runWriter (getFuns ts)
-               in doInline ts $ reverse table                  
+
+-- | 'inlineFun' primero calcula una tabla de todas las funciones que
+-- cumplen con la heuristica y luego las pasa por el inliner                    
+inlineFuns :: [TDecl Term] -> [TDecl Term]
+inlineFuns ts = let (_, table) = runWriter (getFuns ts)
+                in doInline ts $ reverse table                  
 
 -- El inline para funciones recursivas no funciona
 
+-- | 'delAppFix' 
 delAppFix :: Int -> Term -> Maybe Term
 delAppFix k t@(App _ (V _ (Bound k')) u) = if (k + 1 == k') then Just t else Nothing
 delAppFix k (App _ t u) = delAppFix k t
 delAppFix _ _ = Nothing
 
+-- | 'substFix' 
 substFix :: Term -> Int -> Term -> Term
 substFix r k (App i t u) = case delAppFix k t of
                                 Just a -> substFix r k a
@@ -157,6 +199,7 @@ substFix r k (BinaryOp i o t u) = BinaryOp i o (substFix r k t) (substFix r k u)
 substFix r k t@(V i (Bound n)) = if (n == k) then r else t
 substFix _ _ t = t
 
+-- | 'substFixR' 
 substFixR :: Int -> [Name] -> Term -> [Term] -> Term -> State Int Term
 substFixR k ns fa (a:as) (Lam _ _ _ t) = case a of
                                                V _ _ -> substFixR (k-1) ns fa as $ substFix a k t
