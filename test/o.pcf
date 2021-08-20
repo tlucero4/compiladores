@@ -1,5 +1,4 @@
 let suma (m n s : Nat) : Nat = m + m + m + n + n + s
 let fib (n : Nat) : Nat = (let x : Nat = (succ n) in x + n)
-let anterior : Nat -> Nat = pred
 let y : Nat = suma (ifz 0 then 5 else 1) (fib 3) (suma 1 2 3) 
 let _ : Nat = print y

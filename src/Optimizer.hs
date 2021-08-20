@@ -112,9 +112,10 @@ getArgs _ _ _ = Nothing
 -- y reemplaza todas las aplicaciones totales (no parciales) de la función por su cuerpo
 replaceFun :: Name -> Term -> Int -> Term -> Term
 replaceFun n r na x@(App i t a) = case (getArgs t n [a]) of
-                                  Just as -> case r of
-                                                  Lam _ _ _ _ -> fst $ runState (substLamR 0 (length as) [] as r) 0
-                                                  Fix _ _ _ _ _ t -> fst $ runState (substFixR (na - 1) [] (head as) (tail as) t) 0
+                                  Just as -> let as' = map (replaceFun n r na) as
+											 in case r of
+                                                  Lam _ _ _ _ -> fst $ runState (substLamR 0 (length as) [] as' r) 0
+                                                  Fix _ _ _ _ _ t -> fst $ runState (substFixR (na - 1) [] (head as') (tail as') t) 0
                                                   _ -> App i (replaceFun n r na t) (replaceFun n r na a)
                                   Nothing -> App i (replaceFun n r na t) (replaceFun n r na a)
 replaceFun n r na (Lam i x ty t) = Lam i x ty (replaceFun n r na t)
